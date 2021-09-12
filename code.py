@@ -30,10 +30,18 @@ def readLoop():
         time.sleep(0.05)
         for n, button in enumerate(buttons):
             state = button.get_state()
-            current_layer = layer[-1]
 
             # Set the button hold/tap functions
             if state == 'new press':
+                if pending:
+                    if pending.hold in KMAP.keys():
+                        layer.append(pending.hold)
+                    else:
+                        KEYS.press(pending.hold)
+                    pending.tap = False
+                    pending = False
+
+                current_layer = layer[-1]
                 funcs = KMAP[current_layer][n]
                 if isinstance(funcs, str):
                     funcs = (funcs, False)
@@ -42,19 +50,12 @@ def readLoop():
 
             if 'continued' not in state:
                 # FYI for button state transitions
-                print(state, 'hold:', button.hold, 'tap:', button.tap, button.pin)
+                print(state, '- h:', button.hold, 't:', button.tap, button.pin)
 
             # Handle each state (change)
             if state == 'new press':
-                if pending:
-                    KEYS.press(pending.hold)
-                    pending = False
-                    
                 if button.hold:
-                    if button.hold in KMAP.keys():
-                        layer.append(button.hold)
-                    else:
-                        pending = button
+                    pending = button
                 else:
                     KEYS.press(button.tap)
 
@@ -63,31 +64,40 @@ def readLoop():
 
             elif state == 'new hold':
                 if pending == button:
-                    KEYS.press(button.hold) # e.g. alt, shift, etc.
+                    if button.hold in KMAP.keys():
+                        layer.append(button.hold)
+                    else:
+                        KEYS.press(button.hold) # e.g. alt, shift, etc.
+                    button.tap = False
                     pending = False
 
             elif state == 'continued hold':
                 pass
 
             elif state == 'new release':
-                if button.hold:
+                if pending == button:
+                    pending = False
+                    button.hold = False
+                    KEYS.press(button.tap)
+
+                elif button.hold:
                     print(button.hold, KMAP.keys())
                     if button.hold in KMAP.keys():
                         layer.remove(button.hold)
-                    elif pending == button:
-                        pending = False
-                        KEYS.press(button.tap)
                     else:
                         KEYS.release(button.hold)
                         button.tap = False
                     button.hold = False
+
                 else:
                     KEYS.release(button.tap)
                     button.tap = False
 
             else: # state == 'condinued_release'
                 if button.tap:
+                    print('continued release = tap release:', button.tap)
                     KEYS.release(button.tap)
                     button.tap = False
+
 
 readLoop()

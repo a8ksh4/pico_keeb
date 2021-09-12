@@ -38,6 +38,7 @@ class Keys:
             self.pressed[key] = True
 
     def press(self, key):
+        print('Press:', key)
         if key.startswith('S_'):
             self.toggle_shift()
             key = '_'.join(key.split('_')[1:])
@@ -50,6 +51,7 @@ class Keys:
             self.pressed[key] = True
 
     def release(self, key):
+        print('Release:', key)
         if key.startswith('S_'):
             self.toggle_shift()
             key = '_'.join(key.split('_')[1:])
