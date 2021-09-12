@@ -7,8 +7,6 @@ from adafruit_hid.consumer_control_code import ConsumerControlCode
 
 def foo(key):
     exec(f'code = Keycode.{key}', globals())
-    #exec(f'code = Keycode.{key}', locals())
-
     return code
 
 class Keys:
@@ -22,8 +20,8 @@ class Keys:
         for key in dir(Keycode):
             if key != key.upper() or key.startswith('_'):
                 continue
-            #exec(f'code = Keycode.{key}')
-            code = foo(key)
+            exec(f'code = Keycode.{key}', globals())
+            #code = foo(key)
             self.codes[key] = code
             self.pressed[key] = False
             #ptime[key] = Noness

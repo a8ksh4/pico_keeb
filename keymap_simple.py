@@ -21,8 +21,8 @@ PINS = [
 
 KMAP = {
     'BASE': ('COMMA',           ('PERIOD', 'LEFT_ALT'),
-                                                 ('S', 'LEFT_ALT'),
-                                                                 ('D', 'LEFT_ALT'),
+                                                 ('A', 'LEFT_ALT'),
+                                                                 ('F', 'LEFT_ALT'),
              'SEMICOLON',           ('G', 'LEFT_SHIFT'),
                                                  ('J', 'LEFT_SHIFT'),
                                                                  ('M', 'LEFT_SHIFT'),
