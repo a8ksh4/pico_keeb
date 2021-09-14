@@ -20,7 +20,13 @@ What Needs to be done:
 ## How To Use
 Check out the repo to your pi pico.
 Copy the layout_simple.py and modify it to suit your needs.  The example is a 4x4 pad some weird stuff.  
+
 Change the 'import layout_simple as layout' line at the top of code.py to correspond with the name of your layout file.
 Open bug reports and feature requests, or pull requests if you add features or fix stuff.
 
 I was looking for a project to work on for experiende with Circuit Pytnon and the Pi Pico.  This one gets bonus points because it's an opportunity to explore machine learning!
+
+
+## Test Hardware
+<img src="/images/4x4_pico.jpg" alt="Poco Macro Pad" width="200"/>
+<img src="/images/4x4_pico_wiring.jpg" alt="Pico Macro Pad Wiring" width="200"/>
