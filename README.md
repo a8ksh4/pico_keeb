@@ -8,10 +8,10 @@ What Works:
 * Layers
 * Dual function hold/tap keys
 * Direct key to pin wiring (no matrix scanning yet)
+* Mouse emulation
 
 What Needs to be done:
 * Remove requirement for 'tap' key to be defined for layer keys.  Right now all layer keys are dual function.
-* Add mouse emulation.  Using MOUSE_UP, MOUSE_LEFT, etc. right now will cause crash.
 * Add keymap validation at startup.  Make sure all given keycodes are valid and all given layers exist in keymap.
 * Add pin scanning for matrix wiring.
 * Add OLED output for general status messages, etc.
