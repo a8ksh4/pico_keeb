@@ -3,13 +3,18 @@
 # (<hold>, <tap>) means first item is applied when holding, and second
 #                 item is applied for a tap.
 # (<one>, <two>, <three>, ...) is for text string matching, like t9
-#                 prdictive text.
+#                 prdictive text. (once implemented...)
 # Ctrl, Shift, Alt are on three rows so that any key in the row can
 #                 be used with any key in another column for, e.g ctrl+c
 #                 via ctrl and tap tap tap on A to get the c.
 # All words in the key map are compared against dir(adafruit_hid.keycode.Keycode)
 #                 to see if they are a key, and then against KMAP.keys() to see
-#                 if they are a layer.
+#                 if they are a layer.  Mouse stuff is compared to the adafriut mouse lib.
+#
+# Mouse stuff is:
+# MOUSE_DOWN, MOUSE_LEFT, MOUSE_RIGHT, MOUSE_UP
+# LEFT_BUTTON, MIDDLE_BUTTON, RIGHT_BUTTON
+
 import board
 
 PINS = [
@@ -51,6 +56,6 @@ KMAP = {
     'NAVIGATION': ('MOUSE_LEFT',  'MOUSE_DOWN',   'MOUSE_UP',      'MOUSE_RIGHT',
              'LEFT_ARROW',        'DOWN_ARROW',   'UP_ARROW',      'RIGHT_ARROW',
              'HOME',              'PAGE_DOWN',    'PAGE_UP',       'END',
-             None,               'MOUSE_CLICK_L', 'MOUSE_CLICK_M', 'MOUSE_CLICK_R')
+             'LEFT_BUTTON',       None,           'MIDDLE_BUTTON', 'RIGHT_BUTTON')
 
 }

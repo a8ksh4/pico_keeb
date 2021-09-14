@@ -19,6 +19,7 @@ def readLoop():
     global PINS
     global KMAP
     global HOLD_TIME
+    global LOOP_STEP
     #kmap = getKeymap()
     #keys = Keys()
     buttons = [Button.Button(p, HOLD_TIME) for p in PINS]
@@ -27,7 +28,7 @@ def readLoop():
     pending = False
 
     while True:
-        time.sleep(0.05)
+        time.sleep(LOOP_STEP)
         for n, button in enumerate(buttons):
             KEYS.move_mouse()
             state = button.get_state()

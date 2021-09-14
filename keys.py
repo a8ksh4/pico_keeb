@@ -5,11 +5,7 @@ from adafruit_hid.keycode import Keycode
 from adafruit_hid.consumer_control import ConsumerControl
 from adafruit_hid.consumer_control_code import ConsumerControlCode
 from adafruit_hid.mouse import Mouse
-
-
-def foo(key):
-    exec(f'code = Keycode.{key}', globals())
-    return code
+# https://github.com/adafruit/Adafruit_CircuitPython_HID/tree/main/adafruit_hid
 
 class Keys:
     def __init__(self):
@@ -19,17 +15,17 @@ class Keys:
         self.pressed = {}
         self.mouse_keys = {'MOUSE_UP': False, 'MOUSE_DOWN': False,
                            'MOUSE_LEFT': False, 'MOUSE_RIGHT': False}
-        #ptime = {}
+        #self.mouse_buttons = {'LEFT_BUTTON': Mouse.LEFT_BUTTON,
+        #                      'MIDDlE_BUTTON': Mouse.MIDDLE_BUTTON,
+        #                      'RIGHT_BUTTON': Mouse.RIGHT_BUTTON}
+
         print(dir(Keycode))
-        #print(k for k in Keycode)
         for key in dir(Keycode):
             if key != key.upper() or key.startswith('_'):
                 continue
             exec(f'code = Keycode.{key}', globals())
-            #code = foo(key)
             self.codes[key] = code
             self.pressed[key] = False
-            #ptime[key] = Noness
         print(sorted(self.codes.items()))
 
 
@@ -49,6 +45,9 @@ class Keys:
             key = '_'.join(key.split('_')[1:])
         if 'MOUSE' in key:
             self.mouse_keys[key] = True
+        elif key.endswith('_BUTTON'):
+            exec(f'code = Mouse.{key}', globals())
+            self.mouse.press(code)
         elif 'SHIFT' in key:
             self.toggle_shift()
         else:
@@ -64,6 +63,10 @@ class Keys:
             key = '_'.join(key.split('_')[1:])
         if 'MOUSE' in key:
             self.mouse_keys[key] = False
+        elif key.endswith('_BUTTON'):
+            #self.mouse.release(self.mouse_buttons[key])
+            exec(f'code = Mouse.{key}', globals())
+            self.mouse.press(code)
         elif 'SHIFT' in key:
             self.toggle_shift()
         else:
