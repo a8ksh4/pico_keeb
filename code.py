@@ -29,6 +29,7 @@ def readLoop():
     while True:
         time.sleep(0.05)
         for n, button in enumerate(buttons):
+            KEYS.move_mouse()
             state = button.get_state()
 
             # Set the button hold/tap functions
