@@ -17,12 +17,17 @@
 
 import board
 
-PINS = [
+PINS = (
     board.GP5,  board.GP4,  board.GP3,  board.GP2,
     board.GP9,  board.GP8,  board.GP7,  board.GP6,
     board.GP13, board.GP12, board.GP11, board.GP10,
     board.GP17, board.GP16, board.GP15, board.GP14,
-]
+)
+
+# SCROLL_ENCODER = False
+SCROLL_ENCODER = (board.GP21, board.GP20)
+# JOYSTICK_MOUSE = False
+JOYSTICK_MOUSE = (board.GP27, board.GP26)
 
 KMAP = {
     'BASE': ('COMMA',           ('PERIOD', 'LEFT_ALT'),

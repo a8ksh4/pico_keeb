@@ -2,13 +2,14 @@
 #from adafruit_hid.keyboard import Keyboard
 #from adafruit_hid.keycode import Keycode
 import Keys
-import Button
-import keymap_simple as keymap
+import Devices
+import keymap_simple as Keymap
 import time
 #import keymap_t9 as keymap
-KMAP = keymap.KMAP
-PINS = keymap.PINS
-KEYS = Keys.Keys()
+#KMAP = keymap.KMAP
+#KEYS = keys.Keys()
+#SCROLL_ENCODER = Keymap.SCROLL_ENCODER
+#JOYSTICK_MOUSE = Keymap.JOYSTICK_MOUSE
 
 # If a dual function key (layer if hold, key if tap), is held longer than this,
 # then it is treated as a hold (layer change), not a key tap.
@@ -16,13 +17,13 @@ HOLD_TIME = .2
 LOOP_STEP = .05 # 5 ms
 
 def readLoop():
-    global PINS
-    global KMAP
     global HOLD_TIME
     global LOOP_STEP
-    #kmap = getKeymap()
-    #keys = Keys()
-    buttons = [Button.Button(p, HOLD_TIME) for p in PINS]
+    kmap = Keymap.KMAP
+    keys = Keys.Keys()
+    buttons = [Devices.Button(p, HOLD_TIME) for p in Keymap.PINS]
+    scroll_encoder = Devices.Encoder(Keymap.SCROLL_ENCODER)
+    joystick_mouse = Devices.Joystick(Keymap.JOYSTICK_MOUSE)
     queue = [None for b in buttons]
     layer = ['BASE', ]
     pending = False
@@ -30,21 +31,23 @@ def readLoop():
     while True:
         time.sleep(LOOP_STEP)
         for n, button in enumerate(buttons):
-            KEYS.move_mouse()
+            keys.move_mouse()
+            enc_state = scroll_encoder.getState()
+            joy_stateg = joystick_mouse.getState()
             state = button.get_state()
 
             # Set the button hold/tap functions
             if state == 'new press':
                 if pending:
-                    if pending.hold in KMAP.keys():
+                    if pending.hold in kmap.keys():
                         layer.append(pending.hold)
                     else:
-                        KEYS.press(pending.hold)
+                        keys.press(pending.hold)
                     pending.tap = False
                     pending = False
 
                 current_layer = layer[-1]
-                funcs = KMAP[current_layer][n]
+                funcs = kmap[current_layer][n]
                 if isinstance(funcs, str):
                     funcs = (funcs, False)
                 print(funcs, state)
@@ -59,17 +62,17 @@ def readLoop():
                 if button.hold:
                     pending = button
                 else:
-                    KEYS.press(button.tap)
+                    keys.press(button.tap)
 
             elif state == 'continued press':
                 pass
 
             elif state == 'new hold':
                 if pending == button:
-                    if button.hold in KMAP.keys():
+                    if button.hold in kmap.keys():
                         layer.append(button.hold)
                     else:
-                        KEYS.press(button.hold) # e.g. alt, shift, etc.
+                        keys.press(button.hold) # e.g. alt, shift, etc.
                     button.tap = False
                     pending = False
 
@@ -80,25 +83,25 @@ def readLoop():
                 if pending == button:
                     pending = False
                     button.hold = False
-                    KEYS.press(button.tap)
+                    keys.press(button.tap)
 
                 elif button.hold:
-                    print(button.hold, KMAP.keys())
-                    if button.hold in KMAP.keys():
+                    print(button.hold, kmap.keys())
+                    if button.hold in kmap.keys():
                         layer.remove(button.hold)
                     else:
-                        KEYS.release(button.hold)
+                        keys.release(button.hold)
                         button.tap = False
                     button.hold = False
 
                 else:
-                    KEYS.release(button.tap)
+                    keys.release(button.tap)
                     button.tap = False
 
             else: # state == 'condinued_release'
                 if button.tap:
                     print('continued release = tap release:', button.tap)
-                    KEYS.release(button.tap)
+                    keys.release(button.tap)
                     button.tap = False
 
 
