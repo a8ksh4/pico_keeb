@@ -25,9 +25,11 @@ PINS = (
 )
 
 # SCROLL_ENCODER = False
-SCROLL_ENCODER = (board.GP21, board.GP20)
+# Digital 1, Digital 2, Invert
+SCROLL_ENCODER = (board.GP21, board.GP20, True)
 # JOYSTICK_MOUSE = False
-JOYSTICK_MOUSE = (board.GP27, board.GP26)
+# Analog 1, Analog 2, Swap Axes, Invert X, Invert Y
+JOYSTICK_MOUSE = (board.GP27, board.GP26, False, True, False)
 
 KMAP = {
     'BASE': ('COMMA',           ('PERIOD', 'LEFT_ALT'),

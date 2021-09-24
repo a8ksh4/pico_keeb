@@ -33,7 +33,12 @@ def readLoop():
         for n, button in enumerate(buttons):
             keys.move_mouse()
             enc_state = scroll_encoder.getState()
-            joy_stateg = joystick_mouse.getState()
+            if enc_state is not None:
+                print(enc_state)
+            joy_state = joystick_mouse.getState()
+            if joy_state != (0, 0):
+                print(joy_state)
+
             state = button.get_state()
 
             # Set the button hold/tap functions
