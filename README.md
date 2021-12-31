@@ -10,12 +10,15 @@ What Works:
 * Direct key to pin wiring (no matrix scanning yet)
 * Mouse emulation
 
-What Needs to be done:
+What Needs to be done and features want-list:
 * Remove requirement for 'tap' key to be defined for layer keys.  Right now all layer keys are dual function.
 * Add keymap validation at startup.  Make sure all given keycodes are valid and all given layers exist in keymap.
 * Add pin scanning for matrix wiring.
 * Add OLED output for general status messages, etc.
 * Also intending to add T9 style predictive typing support. Curious if a fully functional ~15% keyboard can be practical for linux command line and programming operation.
+* Unit testing for code
+* Battery level checking - read battery voltage and trigger pin high to tell pi to shut down, follow with anoher pin to turn off power.  Report level via i2c on another pin to report battery percent.
+* Hall sensor read to trigger pi shut down and wake up.
 
 ## How To Use
 Check out the repo to your pi pico.
