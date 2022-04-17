@@ -23,7 +23,6 @@ PINS = (
     board.GP5,  board.GP4,  board.GP3,  board.GP2,
     board.GP9,  board.GP8,  board.GP7,  board.GP6,
     board.GP13, board.GP12, board.GP11, board.GP10,
-
     board.GP17, board.GP16, board.GP15, board.GP14,
 )
 
@@ -37,7 +36,7 @@ JOYSTICK_MOUSE = (board.GP27, board.GP26, False, True, False)
 # Chording matrix
 # 0, 1, 2, 3
 # 4, 5, 6, 7
-chorded_keys = 8
+CHORDED_NUM = 8
 CHORDS = {
     'a': (3,),
     'b': (4, 7),
@@ -66,20 +65,19 @@ CHORDS = {
     'y': (6,),
     'z': (0, 1, 2, 3),
 }
+# for key, buttons in sorted(CHORDS.items(), key=lambda k, v: min(value)):
+#     if len(buttons) > 1:
+#         continue
+#     button = buttons[0]
+#     # layers['base'].append( (key, f'{key}_layer') )
+#     # is this terminus?
+#     if [bs for bs in CHORDS.values() if len(bs) > 1 and button in bs]:
+#         layers['base'].append( (key, (button,) )
+#         layers[f'{button}'] = None
+#     else:
+#         layers['base'].append( key )
 
-n = 0
-layers = {'base': [] }
-for key, buttons in sorted(CHORDS.items(), key=lambda k, v: min(value)):
-    if len(buttons) > 1:
-        continue
-    button = buttons[0]
-    # layers['base'].append( (key, f'{key}_layer') )
-    # is this terminus?
-    if [bs for bs in CHORDS.values() if len(bs) > 1 and button in bs]:
-        layers['base'].append( (key, (button,) )
-        layers[f'{button}'] = None
-    else:
-        layers['base'].append( key )
+layers = {'base': None }
 
 while True:
     # get a list of layers that haven't been conpleted yet
@@ -87,28 +85,46 @@ while True:
     if not todo:
         break
     # take the first from that list
-    layer = todo[0]
+    layer_name = todo[0]
 
     # get list of buttons that activated that layer
-    lbuttons = ','.split(layer)
-    lbuttons = [int(b) for b in lbuttons]
+    if layer_name == 'base':
+        layer_buttons = ()
+    else:
+        layer_buttons = layer_name.split(':')
+        layer_buttons = (int(b) for b in layer_buttons)
 
-    # identify keys that include those buttons
-    keys = [k for k, bs in CHORDS.items() if set(bs).issubset(set(lbuttons))]
-    assert(keys)
-    if len(keys) == 1:
-        
-    layers[layer] = []
-    for l, k in layers.items() if k i
+    layers[layer_name] = []
+    # iterate through chord buttons and check for matching keys...
+    for b in range(CHORDED_NUM):
+        next_buttons = layer_buttons.union( (b,) )
+        next_keys = [k for k, bs in CHORDS.items() if next_buttons.issubset(set(bs))]
+        if len(next_keys) == 0:
+            # Dead end
+            layers[layer_name].append(None)
+        elif len(next_keys) == 1:
+            # Terminus
+            layers[layer_name].append(next_keys[0])
+        else:
+            # Branching
+            next_keys_exact = [k for k, bs in CHORDS.items() 
+                    if next_buttons == set(bs)]
+            if next_keys_exact:
+                # With possible endpoint
+                next_key = next_keys_exact[0]
+            else:
+                # Not an endpoint
+                next_key = None
+            next_layer_name = ':'.join(sorted(next_buttons))
+            layers[layer_name].append( (next_key, next_layer_name)
 
-path = ['base',]
-while path:
-    for n, key in layers[path[-1]]:
-print(layers)
+            # Make sure we aren't duplicating another layer
+            if not next_layer_name in layers:
+                layers[next_layer_name] = None
 
 
-for key in range(chorded_keys):
-    
+for layer_name, keys in layers.items():
+    print(layer_name, keys)
 
 #kmap
 #  0,  1,  2,  3
