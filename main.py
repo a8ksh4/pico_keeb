@@ -13,11 +13,23 @@ I2C devices for the gyro board are:
 '''
 
 import time
-from machine import I2C, Pin
+from machine import Pin
 import gyro
+import stick
+import usb.device
+from usb.device.keyboard import KeyboardInterface, KeyCode, LEDCode
+
+KEY_TO_PRESS = KeyCode.A
+PRESS_TOGGLE = True
+kb = KeyboardInterface()
+usb.device.get().init(kb, builtin_driver=True)
 
 while True:
     gyro.print_gyro()
     gyro.print_adxl()
     gyro.print_hmc()
+    stick.print_position()
+    # This works, commenting out because it's disruptive
+    # kb.send_keys([KeyCode.A])
+    # kb.send_keys([])
     time.sleep(1)
