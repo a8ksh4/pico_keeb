@@ -110,9 +110,11 @@ def read_gyro_word(register):
 def read_gyro():
     '''Read raw angular velocity, scale it to degrees per second,
     and return the values.'''
-    x = read_gyro_word(GYRO_XOUT_H)
-    y = read_gyro_word(GYRO_XOUT_H + 2)
-    z = read_gyro_word(GYRO_XOUT_H + 4)
+    # x = read_gyro_word(GYRO_XOUT_H)
+    # y = read_gyro_word(GYRO_XOUT_H + 2)
+    # z = read_gyro_word(GYRO_XOUT_H + 4)
+    data = i2c.readfrom_mem(GYRO_ADDR, GYRO_XOUT_H, 6)
+    x, y, z = struct.unpack('>hhh', data)
 
     scale_factor = 14.375
     dps_x = x / scale_factor
