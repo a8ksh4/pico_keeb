@@ -29,6 +29,8 @@ while True:
     gyro.print_adxl()
     gyro.print_hmc()
     stick.print_position()
+    stick.print_cap_state()
+    stick.print_push_state()
     # This works, commenting out because it's disruptive
     # kb.send_keys([KeyCode.A])
     # kb.send_keys([])

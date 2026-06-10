@@ -2,11 +2,18 @@
 Supports two analog pins, read and translate to x,y position.'''
 
 
-from machine import ADC, Pin
+from machine import ADC, Pin, time_pulse_us
+import time
 
+PUSH_PIN = 21
+PUSH = Pin(PUSH_PIN, Pin.IN, Pin.PULL_UP)
+
+CAP_SENSE_PIN = 22
+CAP_TRESHOLD = 500
+CAP = Pin(CAP_SENSE_PIN, Pin.IN)
 
 X_PIN = 27
-Y_PIN = 28
+Y_PIN = 26
 X_ADC = ADC(Pin(X_PIN))
 Y_ADC = ADC(Pin(Y_PIN))
 
@@ -23,6 +30,25 @@ def get_raw_values():
     x_raw = X_ADC.read_u16()
     y_raw = Y_ADC.read_u16()
     return x_raw, y_raw
+
+
+def measure_cap():
+    CAP.init(Pin.OUT)
+    CAP.value(0)
+    time.sleep_us(10)
+    CAP.init(Pin.IN)
+    t = time_pulse_us(CAP, 1, 10000)
+    return t
+
+
+def print_cap_state():
+    t = measure_cap()
+    print("Cap state:", 'touched' if t > CAP_TRESHOLD else 'open', t)
+
+
+def print_push_state():
+    s = not PUSH.value()
+    print("Stick button:", 'pushed' if s else 'open', s)
 
 
 def get_position():
