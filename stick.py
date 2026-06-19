@@ -12,10 +12,12 @@ CAP_SENSE_PIN = 22
 CAP_TRESHOLD = 500
 CAP = Pin(CAP_SENSE_PIN, Pin.IN)
 
-X_PIN = 27
-Y_PIN = 26
+X_PIN = 26
+Y_PIN = 27
 X_ADC = ADC(Pin(X_PIN))
 Y_ADC = ADC(Pin(Y_PIN))
+X_INVERT = False
+Y_INVERT = True
 
 X_LOWER_LIM = 0
 X_UPPER_LIM = 3.3
@@ -28,7 +30,11 @@ Y_MID = Y_LOWER_LIM + (Y_UPPER_LIM - Y_LOWER_LIM) / 2
 def get_raw_values():
     '''pretty simple raw value read'''
     x_raw = X_ADC.read_u16()
+    if X_INVERT:
+        x_raw = 65535 - x_raw
     y_raw = Y_ADC.read_u16()
+    if Y_INVERT:
+        y_raw = 65535 - y_raw
     return x_raw, y_raw
 
 
@@ -37,7 +43,7 @@ def measure_cap():
     CAP.value(0)
     time.sleep_us(10)
     CAP.init(Pin.IN)
-    t = time_pulse_us(CAP, 1, 10000)
+    t = time_pulse_us(CAP, 1, 15000)
     return t
 
 
