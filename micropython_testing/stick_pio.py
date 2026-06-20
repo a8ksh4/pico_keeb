@@ -2,7 +2,7 @@
 Supports two analog pins, read and translate to x,y position.'''
 
 
-from machine import ADC, Pin, time_pulse_us
+from machine import ADC, Pin
 import rp2
 import time
 
@@ -11,7 +11,6 @@ PUSH = Pin(PUSH_PIN, Pin.IN, Pin.PULL_UP)
 
 CAP_SENSE_PIN = 22
 CAP_TRESHOLD = 50000
-# CAP = Pin(CAP_SENSE_PIN, Pin.IN)
 COUNT_MAX = 0xFFFFFFFF
 SM_FREQ = 1_000_000
 
@@ -87,9 +86,11 @@ def cap_touched():
 
 def print_cap_state():
     # t = measure_cap()
-    avg, last = get_cap_time()
-    print("Cap avg:", avg, "last:", last)
-    print("Cap state:", 'touched' if avg > CAP_TRESHOLD else 'open', avg)
+    # avg, last = get_cap_time()
+    # print("Cap avg:", avg, "last:", last)
+    # print("Cap state:", 'touched' if avg > CAP_TRESHOLD else 'open', avg)
+    cap_time = read_cap()
+    print("Cap state:", 'touched' if cap_time < CAP_TRESHOLD else 'open', cap_time)
 
 
 def print_push_state():

@@ -18,7 +18,8 @@ import gyro
 # import stick
 import stick_pio as stick
 import matrix
-import encoder
+# import encoder
+import encoder_pio as encoder
 # import usb.device
 # from usb.device.keyboard import KeyboardInterface, KeyCode, LEDCode
 
@@ -40,7 +41,8 @@ while True:
     # kb.send_keys([])
 
     matrix.print_active_keys()
-    encoder.monitor_position()
+    # encoder.monitor_position()
+    encoder.print_encoder_changes()
 
     print()
     time.sleep(1)
