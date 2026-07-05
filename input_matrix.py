@@ -4,35 +4,30 @@ using pio. '''
 
 from machine import Pin
 
+# DIODE_DIR = 'COL2ROW'  # or 'ROW2COL'
+COL2ROW = False
+ROWS = [8, 9, 10, 11]
+COLS = [16, 17, 18, 20, 19]
 
-IN_PIN_NUMS = [8, 9, 10, 11]
-OUT_PIN_NUMS = [16, 17, 18, 19, 20]
-# IN_PIN_NUMS = [16, 17, 18, 19, 20]
-# OUT_PIN_NUMS = [8, 9, 10, 11]
+if COL2ROW:
+    DRIVEN_PINS = COLS
+    READ_PINS = ROWS
+else:
+    DRIVEN_PINS = ROWS
+    READ_PINS = COLS
 
-IN_PINS = [Pin(n, Pin.IN, Pin.PULL_UP) for n in IN_PIN_NUMS]
-OUT_PINS = [Pin(n, Pin.OUT) for n in OUT_PIN_NUMS]
-
-# SM_FREQ = 1_000_000
-SM_FREQ = 2000
+DRIVEN_PINS = [Pin(i, Pin.OUT) for i in DRIVEN_PINS]
+READ_PINS = [Pin(i, Pin.IN, Pin.PULL_DOWN) for i in READ_PINS]
 
 
-def matrix_scan():
-    '''Scan the keyboard matrix and return a list of boolean states for each key.
-    This function will iterate through the output pins, setting one high at a time,
-    and read the input pins to determine which keys are pressed.'''
-
-    key_states = []
-    for out_pin in OUT_PINS:
-        # Set the current output pin high
-        out_pin.value(1)
-        # Read the state of each input pin
-        for in_pin in IN_PINS:
-            key_states.append(not in_pin.value())  # Assuming active low
-        # Set the current output pin low before moving to the next
-        out_pin.value(0)
-
-    return key_states
+def scan_matrix():
+    keys_states = []
+    for dp in DRIVEN_PINS:
+        dp.value(1)
+        for rp in READ_PINS:
+            keys_states.append(True if rp.value() else False)
+        dp.value(0)
+    return keys_states
 
 
 def init(pio_machine_num):
@@ -50,7 +45,7 @@ def get_state():
     TODO: If we have bouncing issues, we may need to add some debouncing logic
             here.  Rather than drop older states, we could track history or something.'''
 
-    keys = matric_scan()
+    keys = scan_matrix()
     state = {'keys': keys}
     return state
 

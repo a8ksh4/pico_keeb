@@ -1,15 +1,29 @@
 '''This is an accelerometer/gyro mouse module.  I'm intending
 to use it in tandem with a stick mouse for fine control.'''
 
-
-import time
 from machine import I2C, Pin
 import struct
 
 # i2c = I2C(0, scl=Pin(2), sda=Pin(1))
 i2c = I2C(0, scl=Pin(1), sda=Pin(0))
 
+# Mouse movement learnhing stuff:
+GYRO_X_AXIS = 2      # gyro axis index driving cursor X (2 = yaw/Z)
+GYRO_Y_AXIS = 0      # gyro axis index driving cursor Y (0 = pitch/X)
+X_SIGN = 1
+Y_SIGN = -1
+DEADBAND_DPS = 1.5   # ignore rates below this (noise + residual bias)
+FULL_SCALE_DPS = 90  # rate that maps to full deflection
+LIMIT = 0.5          # module output clamp, half of stick module
+STILL_ACCEL_TOL = 0.08  # g deviation from 1g considered "at rest"
+STILL_GYRO_DPS = 3.0
+BIAS_ALPHA = 0.02
 
+gyro_bias = [0.0, 0.0, 0.0]
+_win = []            # ring of recent raw gyro samples
+WIN_N = 25           # ~0.25-0.5s depending on loop rate
+STILL_SPREAD_DPS = 2.0
+_bias_valid = False
 
 # ITG-2305 / ITG-3205 default I2C address is usually 0x68
 GYRO_ADDR = 0x68
@@ -102,9 +116,6 @@ def read_gyro_word(register):
 def read_gyro():
     '''Read raw angular velocity, scale it to degrees per second,
     and return the values.'''
-    # x = read_gyro_word(GYRO_XOUT_H)
-    # y = read_gyro_word(GYRO_XOUT_H + 2)
-    # z = read_gyro_word(GYRO_XOUT_H + 4)
     data = i2c.readfrom_mem(GYRO_ADDR, GYRO_XOUT_H, 6)
     x, y, z = struct.unpack('>hhh', data)
 
@@ -115,18 +126,65 @@ def read_gyro():
     return dps_x, dps_y, dps_z
 
 
-def init(pio_machine_num):
-    '''Init is a standard function for input modules that 
-    can perform any needede initialization.  Probably this
-    is on ly needed to assign unique state machine nums.'''
-    # init_adxl()
-    # init_gyro()
-    # init_hmc()
+# Smart mouse learning/measurement functions
+def to_axis(rate, sign):
+    if abs(rate) < DEADBAND_DPS:
+        return 0.0
+    v = sign * rate / FULL_SCALE_DPS
+    return max(-LIMIT, min(LIMIT, v))
+
+def _update_bias(g, accel_mag):
+    global _bias_valid
+    _win.append(g)
+    if len(_win) > WIN_N:
+        _win.pop(0)
+    if len(_win) < WIN_N or abs(accel_mag - 1.0) > STILL_ACCEL_TOL:
+        return
+    for i in range(3):
+        vals = [s[i] for s in _win]
+        if max(vals) - min(vals) > STILL_SPREAD_DPS:
+            return
+    # stable window: snap/track bias to its mean
+    for i in range(3):
+        m = sum(s[i] for s in _win) / WIN_N
+        gyro_bias[i] = m if not _bias_valid else gyro_bias[i] + 0.1 * (m - gyro_bias[i])
+    _bias_valid = True
+
+
+def get_mouse_delta():
+    g = read_gyro()
+    ax, ay, az = read_adxl()
+    _update_bias(g, (ax*ax + ay*ay + az*az) ** 0.5)
+    if not _bias_valid:
+        return 0.0, 0.0   # no cursor motion until first good bias
+    gx = [g[i] - gyro_bias[i] for i in range(3)]
+    return to_axis(gx[GYRO_X_AXIS], X_SIGN), to_axis(gx[GYRO_Y_AXIS], Y_SIGN)
+
+
+def init(not_applicable):
+    '''Init is a standard function for pico_keeb input modules that 
+    can perform any needede initialization.  We use this for initializing
+    pio state machines as well as other hardware.'''
+    init_adxl()
+    init_gyro()
+    init_hmc()
 
 
 def get_state():
     '''get_state is a standard function in inupt modules.
     It returns a dict with keys a list of states of any buttons/keys,
     and 'wheel' a list of movement directions.'''
-    state = {'mouse': (0, 0)}
+    state = {'mouse': get_mouse_delta()}
     return state
+
+
+if __name__ == "__main__":
+    from time import sleep
+    init(0)
+    while True:
+        changes = get_state()
+        print(changes)
+        print("ADXL:", read_adxl())
+        print("GYRO:", read_gyro())
+        print("HMC:", read_hmc())
+        sleep(1)

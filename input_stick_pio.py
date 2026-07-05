@@ -17,20 +17,28 @@ SM_FREQ = 1_000_000
 LAST_TOUCH_STATE = False
 # TODO: possibly implement smoothing for cap touch
 
-X_PIN = 26
-Y_PIN = 27
-X_ADC = ADC(Pin(X_PIN))
-Y_ADC = ADC(Pin(Y_PIN))
+X_PIN_NUM = 26
+Y_PIN_NUM = 27
+X_ADC = ADC(Pin(X_PIN_NUM))
+Y_ADC = ADC(Pin(Y_PIN_NUM))
 X_INVERT = False
 Y_INVERT = True
 
-X_LOWER_LIM = 0
-X_UPPER_LIM = 3.3
-X_MID = X_LOWER_LIM + (X_UPPER_LIM - X_LOWER_LIM) / 2
+X_LOWER_LIM = 15000
+X_UPPER_LIM = 25000
 
-Y_LOWER_LIM = 0
-Y_UPPER_LIM = 3.3
-Y_MID = Y_LOWER_LIM + (Y_UPPER_LIM - Y_LOWER_LIM) / 2
+Y_LOWER_LIM = 15000
+Y_UPPER_LIM = 25000
+
+X_CENTER = 20000.0
+Y_CENTER = 20000.0
+X_DEADZONE = 0.02   # in normalized units, learned at runtime
+Y_DEADZONE = 0.02
+CENTER_ALPHA = 0.01     # EMA smoothing for center learning
+WARMUP_ALPHA = 0.3
+WARMUP_SAMPLES = 20
+_warmup = 0
+DZ_MARGIN = 1.3         # deadzone = observed rest deviation * margin
 
 
 def get_stick_raw_values():
@@ -44,23 +52,47 @@ def get_stick_raw_values():
     return x_raw, y_raw
 
 
-def get_stick_position():
-    '''Translate raw values to positional value from -1 to 1 for x and y'''
+def _scale(v, lo, hi, center):
+    '''Scale each side of center independently so both extremes hit +/-1'''
+    if v >= center:
+        span = hi - center
+    else:
+        span = center - lo
+    return (v - center) / span if span else 0.0
+
+
+def get_stick_position(touched):
+    global X_LOWER_LIM, X_UPPER_LIM, Y_LOWER_LIM, Y_UPPER_LIM
+    global X_CENTER, Y_CENTER, X_DEADZONE, Y_DEADZONE, _warmup
     x, y = get_stick_raw_values()
+    X_LOWER_LIM = min(x, X_LOWER_LIM)
+    X_UPPER_LIM = max(x, X_UPPER_LIM)
+    Y_LOWER_LIM = min(y, Y_LOWER_LIM)
+    Y_UPPER_LIM = max(y, Y_UPPER_LIM)
 
-    x_range = X_MID - X_LOWER_LIM
-    if x <= X_MID:
-        x = (X_MID - x) / x_range
-    else:
-        x = (x - X_MID) / x_range
+    if not touched:
+        # stick is at rest: learn true center (EMA)
+        if _warmup < WARMUP_SAMPLES:
+            a = WARMUP_ALPHA if _warmup else 1.0  # first sample: snap directly
+            _warmup += 1
+        else:
+            a = CENTER_ALPHA
+        X_CENTER += a * (x - X_CENTER)
+        Y_CENTER += a * (y - Y_CENTER)
 
-    y_range = Y_MID - Y_LOWER_LIM
-    if y <= Y_MID:
-        y = (Y_MID - y) / y_range
-    else:
-        y = (y - Y_MID) / y_range
+    xn = _scale(x, X_LOWER_LIM, X_UPPER_LIM, X_CENTER)
+    yn = _scale(y, Y_LOWER_LIM, Y_UPPER_LIM, Y_CENTER)
 
-    return x,y
+    if not touched:
+        # grow deadzone to cover observed rest deviation
+        X_DEADZONE = max(X_DEADZONE, min(abs(xn) * DZ_MARGIN, 0.15))
+        Y_DEADZONE = max(Y_DEADZONE, min(abs(yn) * DZ_MARGIN, 0.15))
+
+    if abs(xn) < X_DEADZONE:
+        xn = 0.0
+    if abs(yn) < Y_DEADZONE:
+        yn = 0.0
+    return xn, yn
 
 
 @rp2.asm_pio(set_init=rp2.PIO.OUT_LOW, fifo_join=rp2.PIO.JOIN_RX)
@@ -119,8 +151,9 @@ def get_state():
     clicked = not PUSH.value()
     update_touch_state()
     touched = LAST_TOUCH_STATE
-    stick_x, stick_y = get_stick_position()
-    state = {'keys': [clicked, touched or clicked],
+    stick_x, stick_y = get_stick_position(touched)
+    state = {'keys': [clicked],
+             'mouse_enable': [touched or clicked],
              'mouse': (stick_x, stick_y)}
     return state
 
