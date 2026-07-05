@@ -4,7 +4,7 @@ comment out the touch stuff if your stick doesn't have it.'''
 from machine import ADC, Pin
 import rp2
 
-
+STATE = None
 PUSH_PIN = 21
 PUSH = Pin(PUSH_PIN, Pin.IN, Pin.PULL_UP)
 
@@ -30,15 +30,19 @@ X_UPPER_LIM = 25000
 Y_LOWER_LIM = 15000
 Y_UPPER_LIM = 25000
 
-X_CENTER = 20000.0
-Y_CENTER = 20000.0
-X_DEADZONE = 0.02   # in normalized units, learned at runtime
-Y_DEADZONE = 0.02
-CENTER_ALPHA = 0.01     # EMA smoothing for center learning
-WARMUP_ALPHA = 0.3
-WARMUP_SAMPLES = 20
-_warmup = 0
-DZ_MARGIN = 1.3         # deadzone = observed rest deviation * margin
+X_CENTER = 20000 << 8
+Y_CENTER = 20000 << 8
+X_DZ = 5          # deadzone in 1/256 units (0.02)
+Y_DZ = 5
+DZ_CAP = 38       # 0.15
+_warm = 0
+# X_DEADZONE = 0.02   # in normalized units, learned at runtime
+# Y_DEADZONE = 0.02
+# CENTER_ALPHA = 0.01     # EMA smoothing for center learning
+# WARMUP_ALPHA = 0.3
+# WARMUP_SAMPLES = 20
+# _warmup = 0
+# DZ_MARGIN = 1.3         # deadzone = observed rest deviation * margin
 
 
 def get_stick_raw_values():
@@ -52,46 +56,50 @@ def get_stick_raw_values():
     return x_raw, y_raw
 
 
-def _scale(v, lo, hi, center):
-    '''Scale each side of center independently so both extremes hit +/-1'''
-    if v >= center:
-        span = hi - center
-    else:
-        span = center - lo
-    return (v - center) / span if span else 0.0
+def _axis(v, lo, hi, c8):
+    c = c8 >> 8
+    span = (hi - c) if v >= c else (c - lo)
+    if span <= 0:
+        return 0
+    return (v - c) * 256 // span
 
 
-def get_stick_position(touched):
+def get_stick_mouse_state(touched):
     global X_LOWER_LIM, X_UPPER_LIM, Y_LOWER_LIM, Y_UPPER_LIM
-    global X_CENTER, Y_CENTER, X_DEADZONE, Y_DEADZONE, _warmup
-    x, y = get_stick_raw_values()
-    X_LOWER_LIM = min(x, X_LOWER_LIM)
-    X_UPPER_LIM = max(x, X_UPPER_LIM)
-    Y_LOWER_LIM = min(y, Y_LOWER_LIM)
-    Y_UPPER_LIM = max(y, Y_UPPER_LIM)
+    global X_CENTER, Y_CENTER, X_DZ, Y_DZ, _warm
+
+    x, y = get_stick_raw_values()          # ints from read_u16
+    if x < X_LOWER_LIM: X_LOWER_LIM = x
+    if x > X_UPPER_LIM: X_UPPER_LIM = x
+    if y < Y_LOWER_LIM: Y_LOWER_LIM = y
+    if y > Y_UPPER_LIM: Y_UPPER_LIM = y
 
     if not touched:
-        # stick is at rest: learn true center (EMA)
-        if _warmup < WARMUP_SAMPLES:
-            a = WARMUP_ALPHA if _warmup else 1.0  # first sample: snap directly
-            _warmup += 1
+        if _warm == 0:
+            X_CENTER = x << 8
+            Y_CENTER = y << 8
+            _warm = 1
+        elif _warm < 20:
+            X_CENTER += ((x << 8) - X_CENTER) >> 2   # fast warmup
+            Y_CENTER += ((y << 8) - Y_CENTER) >> 2
+            _warm += 1
         else:
-            a = CENTER_ALPHA
-        X_CENTER += a * (x - X_CENTER)
-        Y_CENTER += a * (y - Y_CENTER)
+            X_CENTER += ((x << 8) - X_CENTER) >> 7   # slow track (~0.008)
+            Y_CENTER += ((y << 8) - Y_CENTER) >> 7
 
-    xn = _scale(x, X_LOWER_LIM, X_UPPER_LIM, X_CENTER)
-    yn = _scale(y, Y_LOWER_LIM, Y_UPPER_LIM, Y_CENTER)
+    xn = _axis(x, X_LOWER_LIM, X_UPPER_LIM, X_CENTER)
+    yn = _axis(y, Y_LOWER_LIM, Y_UPPER_LIM, Y_CENTER)
 
     if not touched:
-        # grow deadzone to cover observed rest deviation
-        X_DEADZONE = max(X_DEADZONE, min(abs(xn) * DZ_MARGIN, 0.15))
-        Y_DEADZONE = max(Y_DEADZONE, min(abs(yn) * DZ_MARGIN, 0.15))
+        dx = xn if xn >= 0 else -xn
+        dx = dx * 13 // 10                 # 1.3 margin
+        if dx > X_DZ: X_DZ = dx if dx < DZ_CAP else DZ_CAP
+        dy = yn if yn >= 0 else -yn
+        dy = dy * 13 // 10
+        if dy > Y_DZ: Y_DZ = dy if dy < DZ_CAP else DZ_CAP
 
-    if abs(xn) < X_DEADZONE:
-        xn = 0.0
-    if abs(yn) < Y_DEADZONE:
-        yn = 0.0
+    if -X_DZ < xn < X_DZ: xn = 0
+    if -Y_DZ < yn < Y_DZ: yn = 0
     return xn, yn
 
 
@@ -133,35 +141,68 @@ def update_touch_state():
         LAST_TOUCH_STATE = average < CAP_THRESHOLD
 
 
-def init(pio_machine_num):
-    '''Init is a standard function for input modules that 
-    can perform any needede initialization.  Probably this
-    is on ly needed to assign unique state machine nums.'''
+def get_num_keys():
+    '''Tells the main program how many keys this module handles
+    so the main program knows how much memory to allocate for it.'''
+    return 1
+
+
+def init(pio_machine_num, input_state, keys_mv):
+    '''Init is a standard function for pico_keeb input modules that 
+    we use to store a referenc to the global InputState oject so
+    any inputs can be recorded in it each tick without any allocation.
+    We also can perform any needed module initialization here, like
+    pio state machines as well as other hardware setup.'''
+    global STATE
+    global KEYS_MV
     global SM
+
+    STATE = input_state
+    KEYS_MV = keys_mv
     SM = rp2.StateMachine(pio_machine_num, cap_measure, freq=SM_FREQ,
                        set_base=CAP_SENSE_PIN, jmp_pin=CAP_SENSE_PIN)
     SM.active(1)
 
 
-def get_state():
-    '''get_state is a standard function in inupt modules.
-    It returns a dict with keys, a list of states of the stick click
-    and capacitive touch state, which can be treated like any other key
-    press events and 'mouse' the current x/y mouse velocity.'''
+def update_state():
+    '''update_state is a standard function in input modules.
+    It updates the internal state based on the current input values.'''    
+
     clicked = not PUSH.value()
     update_touch_state()
     touched = LAST_TOUCH_STATE
-    stick_x, stick_y = get_stick_position(touched)
-    state = {'keys': [clicked],
-             'mouse_enable': [touched or clicked],
-             'mouse': (stick_x, stick_y)}
-    return state
+
+    stick_x, stick_y = get_stick_mouse_state(touched)
+    STATE.mouse_x += stick_x
+    STATE.mouse_y += stick_y
+    STATE.mouse_enable = 1 if touched or clicked else 0
+
+    KEYS_MV[0] = 1 if clicked else 0
 
 
 if __name__ == "__main__":
     from time import sleep
-    init(0)
+    # It's kinda dumb to copy this class here for testing, but I don't want to have
+    # main.py on the pico while doing development because the board will try to run it
+    # at boot and cause probs.   So here we are!
+    class InputState:
+        def __init__(self, num_keys):
+            self.keys = bytearray(num_keys)
+            self.wheel = []
+            self.mouse_x = 0
+            self.mouse_y = 0
+            self.mouse_enable = 0
+
+        def clear_deltas(self):
+            self.wheel = []
+            self.mouse_x = 0
+            self.mouse_y = 0
+            self.mouse_enable = 0
+    state = InputState(1)
+
+    init(0, state, memoryview(state.keys))
     while True:
-        module_state = get_state()
-        print(module_state)
+        state.clear_deltas()
+        update_state()
+        print(STATE.mouse_x, STATE.mouse_y, STATE.mouse_enable, STATE.keys[0])
         sleep(0.5)

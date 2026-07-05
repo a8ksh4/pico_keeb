@@ -48,26 +48,40 @@ def encoder_monitor():
     jmp("loop")
 
 
-def init(pio_machine_num):
-    '''Init is a standard function for input modules that 
-    can perform any needede initialization.  Probably this
-    is on ly needed to assign unique state machine nums.'''
+def get_num_keys():
+    '''Standard pico_keeb input module function that tells
+    the main program how many keys this module handles so the main
+    program can allocate memory for it.'''
+    return 1
+
+
+def init(pio_machine_num, input_state, keys_mv):
+    '''Init is a standard function for pico_keeb input modules that 
+    we use to store a referenc to the global InputState oject so
+    any inputs can be recorded in it each tick without any allocation.
+    We also can perform any needed module initialization here, like
+    pio state machines as well as other hardware setup.'''
+    global STATE
+    global KEYS_MV
     global SM
+
+    STATE = input_state
+    KEYS_MV = keys_mv
+
     SM = rp2.StateMachine(pio_machine_num, encoder_monitor,
                           freq=SM_FREQ,
                           in_base=PIN_ENCODER_A)
     SM.active(1)
 
 
-def get_state():
+def update_state():
     '''get_state is a standard function in inupt modules.
     It returns a dict with keys a list of states of any buttons/keys,
     and 'wheel' a list of movement directions.'''
     global LAST_POSITION
 
-    clicked = not PIN_BUTTON.value()
-    state = {'keys': [clicked],
-             'wheel': []}
+    # clicked = not PIN_BUTTON.value()
+    KEYS_MV[0] = 1 if not PIN_BUTTON.value() else 0
 
     while SM.rx_fifo():
         encoder_position = SM.get() & 0b11  # get the last two bits for A and B
@@ -78,18 +92,46 @@ def get_state():
             continue
 
         if (LAST_POSITION, encoder_position) == UP_STATE:
-            state['wheel'].append('up')
+            # state['wheel'].append('up')
+            STATE.wheel += 1
         elif (LAST_POSITION, encoder_position) == DOWN_STATE:
-            state['wheel'].append('down')
-        LAST_POSITION = encoder_position
+            # state['wheel'].append('down')
+            STATE.wheel -= 1
 
-    return state
+        LAST_POSITION = encoder_position
 
 
 if __name__ == "__main__":
     from time import sleep
-    init(0)
+    # It's kinda dumb to copy this class here for testing, but I don't want to have
+    # main.py on the pico while doing development because the board will try to run it
+    # at boot and cause probs.   So here we are!
+    class InputState:
+        def __init__(self, num_keys):
+            self.keys = bytearray(num_keys)
+            self.wheel = 0
+            self.mouse_x = 0
+            self.mouse_y = 0
+            self.mouse_enable = 0
+
+        def clear_deltas(self):
+            self.wheel = 0
+            self.mouse_x = 0
+            self.mouse_y = 0
+            self.mouse_enable = 0
+    state = InputState(1)
+    keys_mv = memoryview(state.keys)
+
+    init(0, state, keys_mv)
     while True:
-        module_state = get_state()
-        print(module_state)
-        sleep(1)
+        state.clear_deltas()
+        update_state()
+        print(STATE.wheel, STATE.keys)
+        sleep(0.5)
+# if __name__ == "__main__":
+#     from time import sleep
+#     init(0)
+#     while True:
+#         module_state = get_state()
+#         print(module_state)
+#         sleep(1)
