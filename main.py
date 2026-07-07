@@ -8,6 +8,12 @@ import input_encoder_pio
 import input_stick_pio
 import input_matrix
 import input_adxl
+
+# import pyb
+# pyb.usb_mode("VCP+HID", hid=pyb.hid_keyboard)
+import usb.device
+from usb.device.mouse import MouseInterface
+
 from time import sleep, ticks_us, ticks_add, ticks_diff
 
 from micropython import const, mem_info
@@ -21,6 +27,8 @@ PIO_MAP = [0, 4, None, None]
 # PERIOD_US = 1000  # 1 kHz
 PERIOD_US = 1_000_000  # 1 Hz
 
+MOUSE_SCALE = 0.5  # Must be less than 0.5...
+
 class InputState:
     def __init__(self, num_keys):
         self.keys = bytearray(num_keys)  # 0/1 per key
@@ -28,6 +36,7 @@ class InputState:
         self.mouse_x = 0                  # fixed-point, e.g. 1/256 px units
         self.mouse_y = 0
         self.mouse_enable = 0
+        self.mouse = MouseInterface()
 
     def clear_deltas(self):
         self.wheel = 0
@@ -36,15 +45,37 @@ class InputState:
         self.mouse_enable = 0
 
 
+def scale_mouse_movement(dx, dy):
+    dx = int(MOUSE_SCALE * dx)
+    dy = int(MOUSE_SCALE * dy)
+    if dx > 127:
+        dx = 127
+    if dx < -127:
+        dx = -127
+    if dy > 127:
+        dy = 127
+    if dy < -127:
+        dy = -127
+    return dx, dy
+
+
 def tick(input_state):
     '''Does stuff every PERIOD_US microseconds.'''
     input_state.clear_deltas()
     for im in INPUTS:
         im.update_state()
+    # if input_state.mouse_enable and \
+            # (input_state.mouse_x or input_state.mouse_y):
+    mdx, mdy = scale_mouse_movement(input_state.mouse_x, input_state.mouse_y)
+    input_state.mouse.move_by(mdx, mdy)
+
     print()
     print(input_state.mouse_x, input_state.mouse_y,
           input_state.mouse_enable, input_state.wheel,
           input_state.keys)
+    for n, key in enumerate(input_state.keys):
+        if key:
+            print(n)
 
 
 def main():
@@ -60,6 +91,9 @@ def main():
         state_num_keys += im_keys_num
     print("  * State total keys:", state_num_keys)
     input_state = InputState(state_num_keys)
+
+    # Enable usb mouse
+    usb.device.get().init(input_state.mouse, builtin_driver=True)
 
     print("Initializing input moudles...")
 
