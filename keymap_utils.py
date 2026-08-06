@@ -13,7 +13,9 @@ _ALIASES = {'ENTR': 'ENTER',     'SHFT': 'LEFT_SHIFT',
             'CTRL': 'LEFT_CTRL',  }
 
 def update_aliases(aliases):
-    _ALIASES += aliases
+    # _ALIASES += aliases
+    for alias, key in aliases.items():
+        _ALIASES[alias] = key
 
 # Action encoding (16 bits is plenty):
 #   bits 0-7:  keycode (0 = none)

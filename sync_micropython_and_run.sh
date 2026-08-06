@@ -1,8 +1,10 @@
 #!/bin/sh
 
 
-for F in input_*.py; do
+for F in input_*.py keymap_*.py; do
 	pyboard.py -f cp $F :
 done
-#pyboard.py main.py
+
+echo "Run:"
+echo "pyboard.py main.py"
 

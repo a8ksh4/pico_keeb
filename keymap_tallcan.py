@@ -17,7 +17,7 @@ _LAYOUT = bytes((12, 13, 14, 15,    10,  9,  8,  7,
                  17, 18, 19, 20,     5,  4,  3,  2,
                      21, 16,  1,     0, 11,  6))
 
-EXIT_KEYS = bytes((12, 13, 14, 15, 10, 9, , 7))
+EXIT_KEYS = bytes((12, 13, 14, 15, 10, 9, 8, 7))
 SHUTDOWN_KEYS = bytes((12, 13, 14, 15, 17, 18, 19, 20))
 
 # Chords are tbd
@@ -63,7 +63,7 @@ _MY_ALIASES = {'RSHFT': 'RIGHT_SHIFT', }
 
 import keymap_utils as ku
 ku.update_aliases(_MY_ALIASES)
-CHORD_KEYS = ku.get_chord_keys(_CHORDS)
-# CHORDS = ku.get_chords(_CHORDS
-INV_LAYOUT = ku.get_inverted_layout(_LAYOUT)
-ACTIONS = ku.get_actions(_KEYMAP)
+# CHORD_KEYS = ku.get_chording_keys(_CHORDS)
+# # CHORDS = ku.get_chords(_CHORDS
+# INV_LAYOUT = ku.get_inverted_layout(_LAYOUT)
+# ACTIONS = ku.get_actions(_KEYMAP)

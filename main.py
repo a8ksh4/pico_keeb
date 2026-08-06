@@ -160,10 +160,12 @@ def main():
     input_state = InputState(state_num_keys)
 
     # Enable usb mouse
+    print("Initializing USB mouse and keyboard...")
     usb.device.get().init(input_state.keyboard,
                           input_state.mouse,
                           builtin_driver=True)
-    while not (input_state.keyboard.is_open()and input_state.mouse.is_open()):
+    while not ( input_state.keyboard.is_open()
+                and input_state.mouse.is_open() ):
         pass
     print("Mouse and keyboard are initialized...")
 
