@@ -101,7 +101,8 @@ class KeyboardEvent:
 class InputState:
     '''An instance of this is passed to the input modules to track state.'''
     def __init__(self, num_keys):
-        self.keys = bytearray(num_keys)  # 0/1 per key
+        # self.keys = bytearray(num_keys)  # 0/1 per key
+        self.keys = 0                     # accumulated key presses as a bitfield
         self.wheel = 0                    # accumulated detents this tick
         self.mouse_x = 0                  # fixed-point, e.g. 1/256 px units
         self.mouse_y = 0

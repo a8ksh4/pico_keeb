@@ -55,18 +55,18 @@ def get_num_keys():
     return 1
 
 
-def init(pio_machine_num, input_state, keys_mv):
+def init(pio_machine_num, input_state, keys_bytes_offset):
     '''Init is a standard function for pico_keeb input modules that 
     we use to store a referenc to the global InputState oject so
     any inputs can be recorded in it each tick without any allocation.
     We also can perform any needed module initialization here, like
     pio state machines as well as other hardware setup.'''
     global STATE
-    global KEYS_MV
+    global KEYS_OFFSET
     global SM
 
     STATE = input_state
-    KEYS_MV = keys_mv
+    KEYS_OFFSET = keys_bytes_offset
 
     SM = rp2.StateMachine(pio_machine_num, encoder_monitor,
                           freq=SM_FREQ,
@@ -80,8 +80,14 @@ def update_state():
     and 'wheel' a list of movement directions.'''
     global LAST_POSITION
 
-    # clicked = not PIN_BUTTON.value()
-    KEYS_MV[0] = 1 if not PIN_BUTTON.value() else 0
+    # get value at KEYS_OFFSET in STATE.keys bitfield and set it to 0
+    value = (STATE.keys >> KEYS_OFFSET) & 1
+    # Mask STATE.keys bitfield at address KEYS_OFFSET to zero
+    STATE.keys = STATE.keys - (value << KEYS_OFFSET)
+    # Then add to bitfield at address KEYS_OFFSET for button state:
+    value = 1 if not PIN_BUTTON.value() else 0
+    STATE.keys = STATE.keys + (value << KEYS_OFFSET)
+
 
     while SM.rx_fifo():
         encoder_position = SM.get() & 0b11  # get the last two bits for A and B
@@ -108,7 +114,8 @@ if __name__ == "__main__":
     # at boot and cause probs.   So here we are!
     class InputState:
         def __init__(self, num_keys):
-            self.keys = bytearray(num_keys)
+            # self.keys = b
+            self.keys = 0  # bytearray!
             self.wheel = 0
             self.mouse_x = 0
             self.mouse_y = 0
@@ -120,18 +127,10 @@ if __name__ == "__main__":
             self.mouse_y = 0
             self.mouse_enable = 0
     state = InputState(1)
-    keys_mv = memoryview(state.keys)
 
-    init(0, state, keys_mv)
+    init(0, state, 0)
     while True:
         state.clear_deltas()
         update_state()
         print(STATE.wheel, STATE.keys)
         sleep(0.5)
-# if __name__ == "__main__":
-#     from time import sleep
-#     init(0)
-#     while True:
-#         module_state = get_state()
-#         print(module_state)
-#         sleep(1)

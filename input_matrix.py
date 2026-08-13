@@ -30,7 +30,7 @@ def get_num_keys():
     return 20
 
 
-def init(pio_machine_num, input_state, keys_mv):
+def init(pio_machine_num, input_state, keys_bytes_offset):
     '''Init is a standard function for pico_keeb input modules that 
     we use to store a referenc to the global InputState oject so
     any inputs can be recorded in it each tick without any allocation.
@@ -38,8 +38,8 @@ def init(pio_machine_num, input_state, keys_mv):
     pio state machines as well as other hardware setup.'''
     global STATE
     STATE = input_state
-    global KEYS_MV
-    KEYS_MV = keys_mv
+    global KEYS_OFFSET
+    KEYS_OFFSET = keys_bytes_offset
 
 
 def update_state():
@@ -51,7 +51,11 @@ def update_state():
     for dp in DRIVEN_PINS:
         dp.value(1)
         for rp in READ_PINS:
-            KEYS_MV[key_count] = rp.value()
+            # Set the corresponding bit in the keys field
+            if rp.value():
+                STATE.keys |= (1 << (KEYS_OFFSET + key_count))
+            else:
+                STATE.keys &= ~(1 << (KEYS_OFFSET + key_count))
             key_count += 1
         dp.value(0)
 
@@ -63,7 +67,7 @@ if __name__ == "__main__":
     # at boot and cause probs.   So here we are!
     class InputState:
         def __init__(self, num_keys):
-            self.keys = bytearray(num_keys)
+            self.keys = 0
             self.wheel = []
             self.mouse_x = 0
             self.mouse_y = 0
@@ -75,9 +79,8 @@ if __name__ == "__main__":
             self.mouse_y = 0
             self.mouse_enable = 0
     state = InputState(20)
-    keys_mv = memoryview(state.keys)
 
-    init(0, state, keys_mv)
+    init(0, state, 0)
     while True:
         state.clear_deltas()
         update_state()
