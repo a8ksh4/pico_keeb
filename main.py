@@ -1,4 +1,7 @@
+'''main function!'''
 
+# disable pylint import error:
+# pylint: disable=import-error
 
 import machine
 
@@ -33,7 +36,13 @@ PERIOD_US = 1_000_000  # 1 Hz
 MOUSE_SCALE = 0.5  # Must be less than 0.5...
 
 class KeyboardInterfaceMod(KeyboardInterface):
+    '''This is an override for the keyboard interface in 
+    the micropython usb.device.keyboard module.  It adds a method to send
+    a list of keys with modifiers.  The original send_keys method only
+    sends a list of keys with no modifiers.
+    I think maybe this is not necessary.  tbd.'''
     def send_keys_mod(self, down_keys, modifiers, timeout_ms=100):
+        '''foo.'''
         r, s = self._key_reports
         r[0] = modifiers
         i = 2
@@ -52,6 +61,8 @@ class KeyboardInterfaceMod(KeyboardInterface):
 
 
 class KeyboardEvent:
+    '''We pre-allocate a few of these at start and use them to associate
+    key presses with actions.  We  call cleanup when the event is done.'''
     def __init__(self, num_keys):
         self.active_layer = 0
         self.buttons = bytearray(num_keys)  # 1 for pressed
@@ -62,6 +73,7 @@ class KeyboardEvent:
         self.status = 0
         # 0: idle, 1: active, 2: released, 3: cleanup...
     def cleanup(self):
+        '''Resets the event for reuse.'''
         self.status = 0
         self.active_layer = 0
         self.modifiers = 0
@@ -71,11 +83,12 @@ class KeyboardEvent:
         self.uinput_codes[:] = self.zeros[:6]  # one byte allocation?
         # for n in range(num_buttons):
         #     self.buttons[n] = 0
-        
+
         # for n in range(6):
         #     self.output_keys[n] = 0
         #     self.uinput_codes[n] = 0
-    def set_key(code):
+    def set_key(self, code):
+        '''foo'''
         if code < 0:
             self.modifiers |= -code
         else:
@@ -86,6 +99,7 @@ class KeyboardEvent:
 
 
 class InputState:
+    '''An instance of this is passed to the input modules to track state.'''
     def __init__(self, num_keys):
         self.keys = bytearray(num_keys)  # 0/1 per key
         self.wheel = 0                    # accumulated detents this tick
@@ -96,6 +110,7 @@ class InputState:
         self.keyboard = KeyboardInterface()
 
     def clear_deltas(self):
+        '''After each tick, we clear these values.'''
         self.wheel = 0
         self.mouse_x = 0
         self.mouse_y = 0
@@ -103,7 +118,8 @@ class InputState:
 
 
 def scale_mouse_movement(dx, dy):
-    # Avoiding float math to avoid memory alloc in our main loop!
+    '''We scale the mouse to >=256 and <=256 using boolean math
+    to avoid floats and allocs.'''
     # Scale to 1/2:
     dx = dx >> 1
     dy = dy >> 1
@@ -159,8 +175,15 @@ def main():
     print("  * State total keys:", state_num_keys)
     input_state = InputState(state_num_keys)
 
+    print("Allocating events...")
+    events = [KeyboardEvent(state_num_keys) for _ in range(8)]
+
+    print("Inverted layout:", keymap.INV_LAYOUT)
+
     # Enable usb mouse
     print("Initializing USB mouse and keyboard...")
+    print("pyboard will crash, re-run it to reconnect serial.")
+    sleep(1)
     usb.device.get().init(input_state.keyboard,
                           input_state.mouse,
                           builtin_driver=True)
@@ -170,7 +193,6 @@ def main():
     print("Mouse and keyboard are initialized...")
 
     print("Initializing input moudles...")
-
     state_num_keys = 0  # reset to count keys as we init each module
     for im, pio_addr in zip(INPUTS, PIO_MAP):
         print("Initializing", im, pio_addr)

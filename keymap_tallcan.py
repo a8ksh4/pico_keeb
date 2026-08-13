@@ -17,9 +17,13 @@ _LAYOUT = bytes((12, 13, 14, 15,    10,  9,  8,  7,
                  17, 18, 19, 20,     5,  4,  3,  2,
                      21, 16,  1,     0, 11,  6))
 
+# Special key combinations outside keymap.
+# exit_keys will halt micropython script and return to repl
 EXIT_KEYS = bytes((12, 13, 14, 15, 10, 9, 8, 7))
+# shutdown_keys will signal the device to power down.
 SHUTDOWN_KEYS = bytes((12, 13, 14, 15, 17, 18, 19, 20))
 
+_GAME_LAYER = 5
 # Chords are tbd
 _CHORDS = {
     # A
@@ -45,9 +49,19 @@ _KEYMAP = (
     # 2 - Symbols Layer
     ('$',   '#',   '@',   '!',      '!',   '@',   '#',   '$',
      '*',   '&',   '^',   '%',      '%',   '^',   '&',   '*',
-             '',    '',    '',       '',    '',    '')
+             '',    '',    '',       '',    '',    ''),
     # 3 - Meta Layer
+    ('', '',   '',   '',      '',   '',   '',   '',
+     '', '',   '',   '',      '',   '',   '',   '',
+             '',    '',    '',       '',    '',    ''),
     # 4 - Navigation Layer
+    ('', '',   '',   '',      '',   '',   '',   '',
+     '', '',   '',   '',      '',   '',   '',   '',
+             '',    '',    '',       '',    '',    ''),
+    # 5 - Game Layer has no chords or fancy stuff for fast response
+    ('', '',   '',   '',      '',   '',   '',   '',
+     '', '',   '',   '',      '',   '',   '',   '',
+             '',    '',    '',       '',    '',    ''),
 )
 
 # Check _ALIASES to see what already exists in the keymap_utils 
@@ -62,7 +76,10 @@ _MY_ALIASES = {'RSHFT': 'RIGHT_SHIFT', }
 ################################
 
 import keymap_utils as ku
-ku.update_aliases(_MY_ALIASES)
+# from keymap_utils import *
+_ALIASES = ku.update_aliases(_MY_ALIASES)
+LOOKUP = ku.get_lookup_table(_CHORDS, _KEYMAP, _ALIASES, _GAME_LAYER)
+
 # CHORD_KEYS = ku.get_chording_keys(_CHORDS)
 # # CHORDS = ku.get_chords(_CHORDS
 # INV_LAYOUT = ku.get_inverted_layout(_LAYOUT)
