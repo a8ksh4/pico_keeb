@@ -6,25 +6,10 @@ TODO:
 * Double the fifo length
 * Clean up the state change handling
 '''
-
+from input import InputModule
 from machine import Pin
 import rp2
 
-
-BUTTON_PIN = 5
-ENCODER_A = 3
-ENCODER_B = 4
-# SM_FREQ = 2000  # 1_000_000
-SM_FREQ = 1_000_000
-
-PIN_BUTTON = Pin(BUTTON_PIN, Pin.IN, Pin.PULL_UP)
-PIN_ENCODER_A = Pin(ENCODER_A, Pin.IN, Pin.PULL_UP)
-PIN_ENCODER_B = Pin(ENCODER_B, Pin.IN, Pin.PULL_UP)
-
-LAST_POSITION = None
-# UP_STATES = ((0, 1), (1, 2), (2, 3), (3, 0))
-UP_STATE = (2, 3)
-DOWN_STATE = (0, 3)
 
 @rp2.asm_pio(set_init=rp2.PIO.OUT_LOW, fifo_join=rp2.PIO.JOIN_RX)
 def encoder_monitor():
@@ -48,63 +33,78 @@ def encoder_monitor():
     jmp("loop")
 
 
-def get_num_keys():
-    '''Standard pico_keeb input module function that tells
-    the main program how many keys this module handles so the main
-    program can allocate memory for it.'''
-    return 1
+class InputModuleEncoderPio(InputModule):
+    '''This extends InputModule with functionality to support 
+    adxl gyro and accelerometer mouse input.'''
+
+    def get_num_keys(self):
+        '''One key for the encoder click.'''
+        return 1
+
+    def __init__(self, input_state):
+        super().__init__(input_state)
+
+        self.BUTTON_PIN = 5
+        self.ENCODER_A = 3
+        self.ENCODER_B = 4
+        # SM_FREQ = 2000  # 1_000_000
+        self.SM_FREQ = 1_000_000
+
+        self.PIN_BUTTON = Pin(self.BUTTON_PIN, Pin.IN, Pin.PULL_UP)
+        self.PIN_ENCODER_A = Pin(self.ENCODER_A, Pin.IN, Pin.PULL_UP)
+        self.PIN_ENCODER_B = Pin(self.ENCODER_B, Pin.IN, Pin.PULL_UP)
+
+        self.LAST_POSITION = None
+        # UP_STATES = ((0, 1), (1, 2), (2, 3), (3, 0))
+        self.UP_STATE = (2, 3)
+        self.DOWN_STATE = (0, 3)
+
+        self.STATE = input_state
+        self.keys_bytes_offset = 0
+        self.SM = None
 
 
-def init(pio_machine_num, input_state, keys_bytes_offset):
-    '''Init is a standard function for pico_keeb input modules that 
-    we use to store a referenc to the global InputState oject so
-    any inputs can be recorded in it each tick without any allocation.
-    We also can perform any needed module initialization here, like
-    pio state machines as well as other hardware setup.'''
-    global STATE
-    global KEYS_OFFSET
-    global SM
+    def init(self, keys_bytes_offset, state_machine_num=None):
+        # def init(self, pio_machine_num, input_state, keys_bytes_offset):
+        '''Init is a standard function for pico_keeb input modules that 
+        we use to store a referenc to the global InputState oject so
+        any inputs can be recorded in it each tick without any allocation.
+        We also can perform any needed module initialization here, like
+        pio state machines as well as other hardware setup.'''
 
-    STATE = input_state
-    KEYS_OFFSET = keys_bytes_offset
+        self.keys_bytes_offset = keys_bytes_offset
 
-    SM = rp2.StateMachine(pio_machine_num, encoder_monitor,
-                          freq=SM_FREQ,
-                          in_base=PIN_ENCODER_A)
-    SM.active(1)
+        self.SM = rp2.StateMachine(state_machine_num, encoder_monitor,
+                            freq=self.SM_FREQ,
+                            in_base=self.PIN_ENCODER_A)
+        self.SM.active(1)
 
 
-def update_state():
-    '''get_state is a standard function in inupt modules.
-    It returns a dict with keys a list of states of any buttons/keys,
-    and 'wheel' a list of movement directions.'''
-    global LAST_POSITION
+    def update_state(self):
+        '''get_state is a standard function in inupt modules.
+        It returns a dict with keys a list of states of any buttons/keys,
+        and 'wheel' a list of movement directions.'''
+        global LAST_POSITION
 
-    # get value at KEYS_OFFSET in STATE.keys bitfield and set it to 0
-    value = (STATE.keys >> KEYS_OFFSET) & 1
-    # Mask STATE.keys bitfield at address KEYS_OFFSET to zero
-    STATE.keys = STATE.keys - (value << KEYS_OFFSET)
-    # Then add to bitfield at address KEYS_OFFSET for button state:
-    value = 1 if not PIN_BUTTON.value() else 0
-    STATE.keys = STATE.keys + (value << KEYS_OFFSET)
+        key_value = 1 if not self.PIN_BUTTON.value() else 0
+        self.set_key_state(0, key_value)
 
+        while self.SM.rx_fifo():
+            encoder_position = self.SM.get() & 0b11  # get the last two bits for A and B
+            print("Encoder position:", encoder_position)
 
-    while SM.rx_fifo():
-        encoder_position = SM.get() & 0b11  # get the last two bits for A and B
-        print("Encoder position:", encoder_position)
+            if self.LAST_POSITION is None:
+                self.LAST_POSITION = encoder_position
+                continue
 
-        if LAST_POSITION is None:
-            LAST_POSITION = encoder_position
-            continue
+            if (self.LAST_POSITION, encoder_position) == self.UP_STATE:
+                # state['wheel'].append('up')
+                self.STATE.wheel += 1
+            elif (self.LAST_POSITION, encoder_position) == self.DOWN_STATE:
+                # state['wheel'].append('down')
+                self.STATE.wheel -= 1
 
-        if (LAST_POSITION, encoder_position) == UP_STATE:
-            # state['wheel'].append('up')
-            STATE.wheel += 1
-        elif (LAST_POSITION, encoder_position) == DOWN_STATE:
-            # state['wheel'].append('down')
-            STATE.wheel -= 1
-
-        LAST_POSITION = encoder_position
+            self.LAST_POSITION = encoder_position
 
 
 if __name__ == "__main__":
@@ -128,9 +128,10 @@ if __name__ == "__main__":
             self.mouse_enable = 0
     state = InputState(1)
 
-    init(0, state, 0)
+    encoder = InputModuleEncoderPio(state)
+    encoder.init(0, 0)
     while True:
         state.clear_deltas()
-        update_state()
-        print(STATE.wheel, STATE.keys)
+        encoder.update_state()
+        print(encoder.STATE.wheel, encoder.STATE.keys)
         sleep(0.5)

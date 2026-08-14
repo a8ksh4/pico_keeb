@@ -17,7 +17,7 @@ class InputModule:
         self.keys_bytes_offset = keys_bytes_offset
         self.state_machine_num = state_machine_num
 
-    def set_keys_bytes_offset(self, key_offset, value):
+    def set_key_state(self, key_offset, value):
         '''This sets value in the state.keys bytearray at the 
         sum position of the modules's external offset plus the 
         internal key key offset. This needs to work for offsets
