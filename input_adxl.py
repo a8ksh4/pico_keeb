@@ -3,11 +3,10 @@ to use it in tandem with a stick mouse for fine control.'''
 
 from input import InputModule
 from machine import I2C, Pin
-# import struct
 from array import array
 
 
-class InputModuleAdxl(InputModule):
+class InputModule(InputModule):
     '''This extends InputModule with functionality to support 
     adxl gyro and accelerometer mouse input.'''
 
@@ -62,9 +61,9 @@ class InputModuleAdxl(InputModule):
         self.GYRO_XOUT_H = 0x1D
         self.PWR_MGM = 0x3E
 
-    def init(self, keys_bytes_offset, state_machine_num=None):
+    def init(self, keys_bits_offset, state_machine_num=None):
         '''Initializes the input module.  This is called once at startup.'''
-        # super().init(keys_bytes_offset, state_machine_num)
+        # super().init(keys_bits_offset, state_machine_num)
         # self.i2c = I2C(0, scl=Pin(2), sda=Pin(1))
         self.i2c = I2C(0, scl=Pin(1), sda=Pin(0))
         self.init_adxl()
@@ -191,6 +190,7 @@ class InputModuleAdxl(InputModule):
         self.state.mouse_x += self._to_axis(gz - self._bias[2], self.X_SIGN)
         self.state.mouse_y += self._to_axis(gx - self._bias[0], self.Y_SIGN)
 
+# MY_CLASS = InputModuleAdxl
 
 if __name__ == "__main__":
     from time import sleep

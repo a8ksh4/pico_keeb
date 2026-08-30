@@ -33,14 +33,9 @@ def encoder_monitor():
     jmp("loop")
 
 
-class InputModuleEncoderPio(InputModule):
+class InputModule(InputModule):
     '''This extends InputModule with functionality to support 
     adxl gyro and accelerometer mouse input.'''
-
-    def get_num_keys(self):
-        '''One key for the encoder click.'''
-        return 1
-
     def __init__(self, input_state):
         super().__init__(input_state)
 
@@ -60,25 +55,27 @@ class InputModuleEncoderPio(InputModule):
         self.DOWN_STATE = (0, 3)
 
         self.STATE = input_state
-        self.keys_bytes_offset = 0
+        self.keys_bits_offset = 0
         self.SM = None
 
-
-    def init(self, keys_bytes_offset, state_machine_num=None):
-        # def init(self, pio_machine_num, input_state, keys_bytes_offset):
+    def init(self, keys_bits_offset, state_machine_num=None):
+        # def init(self, pio_machine_num, input_state, keys_bits_offset):
         '''Init is a standard function for pico_keeb input modules that 
         we use to store a referenc to the global InputState oject so
         any inputs can be recorded in it each tick without any allocation.
         We also can perform any needed module initialization here, like
         pio state machines as well as other hardware setup.'''
 
-        self.keys_bytes_offset = keys_bytes_offset
+        self.keys_bits_offset = keys_bits_offset
 
         self.SM = rp2.StateMachine(state_machine_num, encoder_monitor,
                             freq=self.SM_FREQ,
                             in_base=self.PIN_ENCODER_A)
         self.SM.active(1)
 
+    def get_num_keys(self):
+        '''One key for the encoder click.'''
+        return 1
 
     def update_state(self):
         '''get_state is a standard function in inupt modules.

@@ -48,11 +48,10 @@ def get_lookup_table(chords, keymap, aliases, game_layer):
             hold_action = _lookup(hold)
             tap_action = _lookup(tap)
             in_chord = tap_action in c_keys
-            lookup[layer_num][]
+            lookup[layer_num]
 
 
     return lookup
- 
 
 def get_chording_keys(chords):
     keys = set()
@@ -83,7 +82,8 @@ def get_chording_keys(chords):
 #     return code                                   # plain key, behavior 0
 
 def _lookup(name):
-    return getattr(KeyCode, _ALIASES.get(name, name))
+    # return getattr(KeyCode, _ALIASES.get(name, name))
+    return None
 
 # def get_actions(keymap):
 #     return tuple(array('H', (parse_keys(k) for k in layer)) for layer in keymap)

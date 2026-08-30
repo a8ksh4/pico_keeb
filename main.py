@@ -24,7 +24,8 @@ from time import sleep, ticks_us, ticks_add, ticks_diff
 
 from micropython import const, mem_info
 
-INPUTS = [input_encoder_pio, input_stick_pio, input_matrix, input_adxl]
+INPUTS = [input_encoder_pio, input_stick_pio,
+          input_matrix, input_adxl]
 # If pio machines are too many instructions, different
 # clocks, ..., they need to be on separate pio blocks.
 PIO_MAP = [0, 4, None, None]
@@ -100,7 +101,7 @@ class KeyboardEvent:
 
 class InputState:
     '''An instance of this is passed to the input modules to track state.'''
-    def __init__(self, num_keys):
+    def __init__(self):
         # self.keys = bytearray(num_keys)  # 0/1 per key
         self.keys = 0                     # accumulated key presses as a bitfield
         self.wheel = 0                    # accumulated detents this tick
@@ -140,6 +141,7 @@ def tick(input_state):
     keeb = input_state.keyboard
 
     for im in INPUTS:
+        print(f'Updating:', im)
         im.update_state()
     if input_state.mouse_enable and \
             (input_state.mouse_x or input_state.mouse_y):
@@ -151,46 +153,54 @@ def tick(input_state):
           input_state.wheel, input_state.keys)
 
     # Check for exit and shutdown key combos
-    for pin in keymap.EXIT_KEYS:
-        if not input_state.keys[pin]:
-            break
-    else:
-        print('EXIT_KEYS matched.  Calling Quit.')
+    # for pin in keymap.EXIT_KEYS:
+    #     if not input_state.keys[pin]:
+    #         break
+    # else:
+    #     print('EXIT_KEYS matched.  Calling Quit.')
 
-    for n, key in enumerate(input_state.keys):
-        if key:
-            print(n)
+    # for n, key in enumerate(input_state.keys):
+    #     if key:
+    #         print(n)
+    print(input_state.keys)
 
 
 def main():
     '''Main program loop...'''
     # global INPUT_STATE
+    global INPUTS
 
     print("Get shapes of all inputs to build state shaps...")
     state_num_keys = 0
 
+    input_state = InputState()
+    new = []
     for im in INPUTS:
-        im_keys_num = im.get_num_keys()
+        im_obj = im.InputModule(input_state)
+        new.append(im_obj)
+        print("  * Input module:", im.__name__)
+        im_keys_num = im_obj.get_num_keys()
         print('    ', im.__name__, im_keys_num)
         state_num_keys += im_keys_num
+    INPUTS = new
     print("  * State total keys:", state_num_keys)
-    input_state = InputState(state_num_keys)
+    
 
     print("Allocating events...")
     events = [KeyboardEvent(state_num_keys) for _ in range(8)]
 
-    print("Inverted layout:", keymap.INV_LAYOUT)
+    # print("Inverted layout:", keymap.INV_LAYOUT)
 
     # Enable usb mouse
     print("Initializing USB mouse and keyboard...")
     print("pyboard will crash, re-run it to reconnect serial.")
     sleep(1)
-    usb.device.get().init(input_state.keyboard,
-                          input_state.mouse,
-                          builtin_driver=True)
-    while not ( input_state.keyboard.is_open()
-                and input_state.mouse.is_open() ):
-        pass
+    # usb.device.get().init(input_state.keyboard,
+    #                       input_state.mouse,
+    #                       builtin_driver=True)
+    # while not ( input_state.keyboard.is_open()
+    #             and input_state.mouse.is_open() ):
+    #     pass
     print("Mouse and keyboard are initialized...")
 
     print("Initializing input moudles...")
@@ -198,11 +208,11 @@ def main():
     for im, pio_addr in zip(INPUTS, PIO_MAP):
         print("Initializing", im, pio_addr)
         im_keys_num = im.get_num_keys()
-        if im_keys_num == 0:
-            im_keys_mv = None
-        else:
-            im_keys_mv = memoryview(input_state.keys)[state_num_keys:state_num_keys + im_keys_num]
-        im.init(pio_addr, input_state, im_keys_mv)
+        # if im_keys_num == 0:
+        #     im_keys_mv = None
+        # else:
+        #     im_keys_mv = memoryview(input_state.keys)[state_num_keys:state_num_keys + im_keys_num]
+        im.init(state_num_keys, pio_addr)
         state_num_keys += im_keys_num
         # print(dir(im))
 

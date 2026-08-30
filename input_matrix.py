@@ -6,7 +6,7 @@ from input import InputModule
 from machine import Pin
 
 
-class InputModuleMatrix(InputModule):
+class InputModule(InputModule):
     '''This is a standard pick_keeb input module with init() and 
     get_state() functions to handle keyboard matrix scanning
     using pio. '''
@@ -27,7 +27,7 @@ class InputModuleMatrix(InputModule):
 
         self.DRIVEN_PINS = [Pin(i, Pin.OUT) for i in self.DRIVEN_PINS]
         self.READ_PINS = [Pin(i, Pin.IN, Pin.PULL_DOWN) for i in self.READ_PINS]
-        self.keys_bytes_offset = 0
+        self.keys_bits_offset = 0
 
 
     def get_num_keys(self):
@@ -37,13 +37,13 @@ class InputModuleMatrix(InputModule):
         return 20
 
 
-    def init(self, keys_bytes_offset, pio_machine_num):
+    def init(self, keys_bits_offset, pio_machine_num):
         '''Init is a standard function for pico_keeb input modules that 
         we use to store a referenc to the global InputState oject so
         any inputs can be recorded in it each tick without any allocation.
         We also can perform any needed module initialization here, like
         pio state machines as well as other hardware setup.'''
-        self.keys_bytes_offset = keys_bytes_offset
+        self.keys_bits_offset = keys_bits_offset
 
 
     def update_state(self):
