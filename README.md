@@ -1,5 +1,7 @@
 # pico_keeb
-A pi pico keyboard firmware.  Currently re-writing this in micropython.
+A small keyboard firmware!  It was originally written in CircuitPython and was
+a buggy monolitic implementatino.  It's currently being rewritten in micropython
+and hopefully made to work reliably with a big feature list...
 
 Notes:
 * https://github.com/micropython/micropython-lib/tree/master/micropython/usb

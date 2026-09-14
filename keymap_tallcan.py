@@ -23,6 +23,8 @@ EXIT_KEYS = bytes((12, 13, 14, 15, 10, 9, 8, 7))
 # shutdown_keys will signal the device to power down.
 SHUTDOWN_KEYS = bytes((12, 13, 14, 15, 17, 18, 19, 20))
 
+CHORD_DELAY_MS = 100  # how long to wait for a chord to complete before triggering action
+
 _GAME_LAYER = 5
 # Chords are tbd
 _CHORDS = {

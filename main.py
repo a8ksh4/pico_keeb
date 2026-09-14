@@ -66,7 +66,8 @@ class KeyboardEvent:
     key presses with actions.  We  call cleanup when the event is done.'''
     def __init__(self, num_keys):
         self.active_layer = 0
-        self.buttons = bytearray(num_keys)  # 1 for pressed
+        # self.buttons = bytearray(num_keys)  # 1 for pressed
+        self.buttons = 0
         self.zeros = bytes(num_keys)
         self.modifiers = 0
         self.output_keys = bytearray(6)
@@ -79,7 +80,8 @@ class KeyboardEvent:
         self.active_layer = 0
         self.modifiers = 0
         num_buttons = len(self.buttons)
-        self.buttons[:] = self.zeros[:num_buttons]
+        # self.buttons[:] = self.zeros[:num_buttons]
+        self.buttons = 0
         self.output_keys[:] = self.zeros  # no allocation
         self.uinput_codes[:] = self.zeros[:6]  # one byte allocation?
         # for n in range(num_buttons):
@@ -97,19 +99,31 @@ class KeyboardEvent:
                 if self.output_keys[n] == 0:
                     self.output_keys[n] = code
 
+    def compare_buttons(self, new_buttons):
+        '''Returns (Bool, Bool), where first bool is True if any new buttons
+        are pressed, and second bool is True if any buttons were released.'''
+        any_pressed = (self.buttons & new_buttons) != new_buttons
+        any_released = (self.buttons & new_buttons) != self.buttons
+        return any_pressed, any_released
 
 
 class InputState:
     '''An instance of this is passed to the input modules to track state.'''
-    def __init__(self):
+    def __init__(self, keymap):
         # self.keys = bytearray(num_keys)  # 0/1 per key
-        self.keys = 0                     # accumulated key presses as a bitfield
+        self.buttons = 0                     # accumulated key presses as a bitfield
         self.wheel = 0                    # accumulated detents this tick
         self.mouse_x = 0                  # fixed-point, e.g. 1/256 px units
         self.mouse_y = 0
         self.mouse_enable = 0
         self.mouse = MouseInterface()
         self.keyboard = KeyboardInterface()
+        self.active_events = []  # list of active KeyboardEvent objects
+        self.idle_events = []    # list of idle KeyboardEvent objects for reuse
+        self.current_event = None  # the current event being processed
+        self.keymap = keymap
+        self.lookup = keymap.LOOKUP  # {layer: {<keys_active>: (<in_chord>, <is_holdtap>,
+                                     #                          <tap_action>, <hold_action>),
 
     def clear_deltas(self):
         '''After each tick, we clear these values.'''
@@ -117,6 +131,32 @@ class InputState:
         self.mouse_x = 0
         self.mouse_y = 0
         self.mouse_enable = 0
+
+    def tick(self):
+        '''Make sure we have an event objest to work on.'''
+        if self.current_event is None:
+            self.current_event = self.idle_events.pop()  # get an idle event
+
+    def queue_current_event(self):
+        '''Adds the current event to the active list and clears it.'''
+        self.active_events.append(self.current_event)
+        self.current_event = None
+
+    def recycle_event(self, event):
+        '''Recycles an event back to the idle pool.'''
+        event.cleanup()
+        if self.current_event == event:
+            self.current_event = None
+        if event in self.active_events:
+            self.active_events.remove(event)
+        self.idle_events.append(event)
+
+    def get_active_layer(self):
+        '''Returns the active layer of the top event, or 0 if no events.'''
+        last_active_event = self.active_events[-1] if self.active_events else None
+        if last_active_event is None:
+            return 0
+        return last_active_event.active_layer
 
 
 def scale_mouse_movement(dx, dy):
@@ -162,19 +202,35 @@ def tick(input_state):
 
     print()
     print(input_state.mouse_x, input_state.mouse_y, input_state.mouse_enable,
-          input_state.wheel, input_state.keys)
+          input_state.wheel, input_state.buttons)
+
+    input_state.tick()
+    current_layer = input_state.get_active_layer()
+    active_event = input_state.get_top_event()
 
     # Check for exit and shutdown key combos
     # for pin in keymap.EXIT_KEYS:
-    #     if not input_state.keys[pin]:
+    #     if not input_state.buttons[pin]:
     #         break
     # else:
     #     print('EXIT_KEYS matched.  Calling Quit.')
 
-    # for n, key in enumerate(input_state.keys):
+    # for n, key in enumerate(input_state.buttons):
     #     if key:
     #         print(n)
-    print(input_state.keys)
+    print(input_state.buttons)
+
+    if not input_state.buttons and input_state.current_event.status == 0:  # idle
+        return  # nothing to do
+
+    # Check if this is a new event?  Set active_event state to active, set its buttons to
+    # The current buttons. 
+    if input_state.buttons and input_state.current_event.status == 0:  # idle
+        input_state.current_event.status = 1  # active
+        input_state.current_event.buttons = input_state.buttons
+        print("New event:", input_state.current_event.buttons)
+
+    # Check what actions the current event maps to
 
 
 def main():
@@ -185,7 +241,7 @@ def main():
     print("Get shapes of all inputs to build state shaps...")
     state_num_keys = 0
 
-    input_state = InputState()
+    input_state = InputState(keymap)
     new = []
     for im in INPUTS:
         im_obj = im.InputModule(input_state)
@@ -199,8 +255,7 @@ def main():
 
     print("Allocating events...")
     events = [KeyboardEvent(state_num_keys) for _ in range(8)]
-
-    # print("Inverted layout:", keymap.INV_LAYOUT)
+    input_state.idle_events += events
 
     # Enable usb mouse
     print("Initializing USB mouse and keyboard...")
@@ -223,6 +278,13 @@ def main():
         im.init(state_num_keys, pio_addr)
         state_num_keys += im_keys_num
         # print(dir(im))
+
+    # keymap.LOOKUP
+    # {layer: {bitfield: (action, action_args, delay_ms, ?????)}}
+    # by layer table of key press (combinatinos) to actions.
+    # delay is for chords - pressed keys could be a chord or part of a larger chord,
+    # so we either wait for the delay tieout or for any of the keys to be released 
+    # to trigger the action.  
 
     print("Looping forever...")
     next_t = ticks_us()
