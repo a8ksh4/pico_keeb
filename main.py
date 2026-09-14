@@ -120,8 +120,9 @@ class InputState:
 
 
 def scale_mouse_movement(dx, dy):
-    '''We scale the mouse to >=256 and <=256 using boolean math
-    to avoid floats and allocs.'''
+    '''https://github.com/micropython/micropython-lib/blob/master/micropython/usb/usb-device-mouse/usb/device/mouse.py
+    The mouse movement has to be -127 <= delta <= 127, so we scale it using boolean operations.
+    Floats would involve memory allocation, so boolean stuff is better.'''
     # Scale to 1/2:
     dx = dx >> 1
     dy = dy >> 1
@@ -131,6 +132,15 @@ def scale_mouse_movement(dx, dy):
     # Scale to 3/8:
     # dx = dx * 96 >> 8  # 96 / 256 = 0.375
     # dy = dy * 96 >> 8
+    if dx < 0:
+        dx = max(-127, dx)
+    if dx > 0:
+        dx = min(dx, 127)
+    if dy < 0:
+        dy = max(-127, dy)
+    if dy > 0:
+        dy = min(127, dy)
+
     return dx, dy
 
 
@@ -141,11 +151,13 @@ def tick(input_state):
     keeb = input_state.keyboard
 
     for im in INPUTS:
-        print(f'Updating:', im)
+        # print(f'Updating:', im)
         im.update_state()
+    print("Mouse enabled:", input_state.mouse_enable)
     if input_state.mouse_enable and \
             (input_state.mouse_x or input_state.mouse_y):
         mdx, mdy = scale_mouse_movement(input_state.mouse_x, input_state.mouse_y)
+        print("Moving mouse:", mdx, mdy)
         input_state.mouse.move_by(mdx, mdy)
 
     print()
@@ -184,7 +196,6 @@ def main():
         state_num_keys += im_keys_num
     INPUTS = new
     print("  * State total keys:", state_num_keys)
-    
 
     print("Allocating events...")
     events = [KeyboardEvent(state_num_keys) for _ in range(8)]
@@ -195,12 +206,12 @@ def main():
     print("Initializing USB mouse and keyboard...")
     print("pyboard will crash, re-run it to reconnect serial.")
     sleep(1)
-    # usb.device.get().init(input_state.keyboard,
-    #                       input_state.mouse,
-    #                       builtin_driver=True)
-    # while not ( input_state.keyboard.is_open()
-    #             and input_state.mouse.is_open() ):
-    #     pass
+    usb.device.get().init(input_state.keyboard,
+                          input_state.mouse,
+                          builtin_driver=True)
+    while not ( input_state.keyboard.is_open()
+                and input_state.mouse.is_open() ):
+        pass
     print("Mouse and keyboard are initialized...")
 
     print("Initializing input moudles...")
@@ -208,10 +219,7 @@ def main():
     for im, pio_addr in zip(INPUTS, PIO_MAP):
         print("Initializing", im, pio_addr)
         im_keys_num = im.get_num_keys()
-        # if im_keys_num == 0:
-        #     im_keys_mv = None
-        # else:
-        #     im_keys_mv = memoryview(input_state.keys)[state_num_keys:state_num_keys + im_keys_num]
+        # state_num_keys is the bit offset that the module can write at.
         im.init(state_num_keys, pio_addr)
         state_num_keys += im_keys_num
         # print(dir(im))

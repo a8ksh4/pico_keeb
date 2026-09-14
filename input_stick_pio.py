@@ -49,7 +49,7 @@ class InputModule(InputModule):
         self.X_ADC = ADC(Pin(self.X_PIN_NUM))
         self.Y_ADC = ADC(Pin(self.Y_PIN_NUM))
         self.X_INVERT = False
-        self.Y_INVERT = True
+        self.Y_INVERT = False
 
         self.X_LOWER_LIM = 15000
         self.X_UPPER_LIM = 25000
@@ -154,6 +154,7 @@ class InputModule(InputModule):
             average = total / count
             # print("cap average", average, average < CAP_THRESHOLD)
             self.LAST_TOUCH_STATE = average < self.CAP_THRESHOLD
+            print("Touch average:", average, "vs threshold:", self.CAP_THRESHOLD)
 
     def update_state(self):
         '''update_state is a standard function in input modules.
@@ -195,7 +196,7 @@ if __name__ == "__main__":
             self.mouse_enable = 0
     state = InputState(1)
 
-    stick = InputStickPio(state)
+    stick = InputModule(state)
     stick.init(0, 0)
     while True:
         state.clear_deltas()
