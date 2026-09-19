@@ -73,6 +73,7 @@ class KeyboardEvent:
         self.modifiers = 0
         self.output_keys = bytearray(6)
         self.uinput_codes = bytearray(6)
+        self.hold_time_exceeded = False
         # self.status = 0
         # 0: idle,   1: active,   2: released,   3: cleanup...
 
@@ -116,9 +117,10 @@ class InputState:
         self.active_events = []  # list of active KeyboardEvent objects
         self.idle_events = []    # list of idle KeyboardEvent objects for reuse
         self.current_event = None  # the current event being processed
-        # self.keymap = keymap
-        # self.lookup = keymap.LOOKUP  # {layer: {<keys_active>: (<in_chord>, <is_holdtap>,
-                                     #                          <tap_action>, <hold_action>),
+        self.send_keys = [0 for _ in range(10)]
+        # hid send_keys can pass up to six regular keys,
+        # and puts shift ctrl alt gui in the modifyer byte,
+        # but we pass them as regular keys.
 
     def clear_deltas(self):
         '''After each tick, we clear these values.'''
@@ -203,46 +205,53 @@ def tick(input_state):
     ########
     # New event block
     ########
-    if buttons:
-    
-    # Check if this is a new event?  Set active_event state to active, set its buttons to
-    # The current buttons.
-    if input_state.buttons and input_state.current_event.status == 0:  # idle
-        # current_event.status = 1  # active
-        current_event.buttons = input_state.buttons
+    # variables - buttons, current_event.buttons
+    process_current_event = False
+    current_time = ticks_us()
+    if not buttons and not current_event.buttons:
+        pass
+    elif buttons and not current_event.buttons:
+        current_event.buttons = buttons
         print("Event starting:", current_event.buttons)
-        current_event.start_time = ticks_us()
+        current_event.start_time = current_time
+    elif not buttons and current_event.buttons:
+        # current_event.status = 2  # released
+        print("Event released:", current_event.buttons)
+        process_current_event = True
+    elif buttons and current_event.buttons:
+        any_pressed, any_released = current_event.compare_buttons(buttons)
+        if any_released:
+            # current_event.status = 2  # released
+            print("Event released:", current_event.buttons)
+            process_current_event = True
+        elif any_pressed:
+            # current_event.status = 1  # active
+            current_event.buttons = buttons
+            print("Event continuing:", current_event.buttons)
+        elif current_time - current_event.start_time > KEYMAP.HOLD_TIME_MS * 1000:
+            current_event.held_time_exceeded = True
+            process_current_event = True
 
-    if not current_event.status:
-        return  # nothing to do, no active event
-
-    event_duration = ticks_diff(ticks_us(), current_event.start_time)
-    hold_time_exceeded = event_duration > KEYMAP.HOLD_TIME_MS * 1000
-    any_pressed, any_released = current_event.compare_buttons(input_state.buttons)
-
-    # Check what actions the current event maps to:
-    foo = LOOKUP[current_layer].get(current_event.buttons, (None, None, None, None))
-    hold_action, tap_action, in_chord, is_holdtap = foo
-    print("Actions:", hold_action, tap_action, in_chord, is_holdtap)
-
-    if any_released:
-        current_event.action = tap_action
-        # current_event.status = 2
-        print("Event generated, tap action:", current_event.action)
-    elif hold_time_exceeded:
-        current_event.action = hold_action
-        # current_event.status = 2
-        print("Event generated, hold action:", current_event.action)
-
-    if current_event.status != 1:  # not active
+    if process_current_event:
+        held = current_event.held_time_exceeded
+        # Check what actions the current event maps to:
+        foo = LOOKUP[current_layer].get(current_event.buttons, (None, None, None, None))
+        hold_action, tap_action, in_chord, is_holdtap = foo
+        print("Actions:", hold_action, tap_action, in_chord, is_holdtap)
+        current_event.action = hold_action if held else tap_action
         input_state.queue_current_event()  # move to active list
         print("Event queued:", current_event.action)
 
-    active_keys = []
+    send_keys_num = 0
     for event in input_state.active_events:
-        active_keys.append(event.action)
-    print("Active events:", active_keys)
-
+        if event.action in KeyCode:
+            input_state.send_keys[send_keys_num] = event.action
+            send_keys_num += 1
+    for n in range(send_keys_num, len(input_state.send_keys)):
+        input_state.send_keys[n] = 0
+    print("Send keys:", input_state.send_keys, 'Num active events:', len(input_state.active_events))
+    input_state.keyboard.send_keys(input_state.send_keys)
+    
 
     # pass active keys to hid keyboard
 
