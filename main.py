@@ -11,8 +11,10 @@ import input_encoder_pio
 import input_stick_pio
 import input_matrix
 import input_adxl
+from input import scale_mouse_movement
 
-import keymap_tallcan as keymap
+import keymap_tallcan as KEYMAP
+LOOKUP = KEYMAP.LOOKUP
 
 # import pyb
 # pyb.usb_mode("VCP+HID", hid=pyb.hid_keyboard)
@@ -36,29 +38,29 @@ PERIOD_US = 1_000_000  # 1 Hz
 
 MOUSE_SCALE = 0.5  # Must be less than 0.5...
 
-class KeyboardInterfaceMod(KeyboardInterface):
-    '''This is an override for the keyboard interface in 
-    the micropython usb.device.keyboard module.  It adds a method to send
-    a list of keys with modifiers.  The original send_keys method only
-    sends a list of keys with no modifiers.
-    I think maybe this is not necessary.  tbd.'''
-    def send_keys_mod(self, down_keys, modifiers, timeout_ms=100):
-        '''foo.'''
-        r, s = self._key_reports
-        r[0] = modifiers
-        i = 2
-        for k in down_keys:
-            if k and i < 8:
-                r[i] = k
-                i += 1
-        while i < 8:
-            r[i] = 0
-            i += 1
-        if self.send_report(r, timeout_ms):
-            self._key_reports[0] = s
-            self._key_reports[1] = r
-            return True
-        return False
+# class KeyboardInterfaceMod(KeyboardInterface):
+#     '''This is an override for the keyboard interface in 
+#     the micropython usb.device.keyboard module.  It adds a method to send
+#     a list of keys with modifiers.  The original send_keys method only
+#     sends a list of keys with no modifiers.
+#     I think maybe this is not necessary.  tbd.'''
+#     def send_keys_mod(self, down_keys, modifiers, timeout_ms=100):
+#         '''foo.'''
+#         r, s = self._key_reports
+#         r[0] = modifiers
+#         i = 2
+#         for k in down_keys:
+#             if k and i < 8:
+#                 r[i] = k
+#                 i += 1
+#         while i < 8:
+#             r[i] = 0
+#             i += 1
+#         if self.send_report(r, timeout_ms):
+#             self._key_reports[0] = s
+#             self._key_reports[1] = r
+#             return True
+#         return False
 
 
 class KeyboardEvent:
@@ -66,38 +68,31 @@ class KeyboardEvent:
     key presses with actions.  We  call cleanup when the event is done.'''
     def __init__(self, num_keys):
         self.active_layer = 0
-        # self.buttons = bytearray(num_keys)  # 1 for pressed
         self.buttons = 0
         self.zeros = bytes(num_keys)
         self.modifiers = 0
         self.output_keys = bytearray(6)
         self.uinput_codes = bytearray(6)
-        self.status = 0
-        # 0: idle, 1: active, 2: released, 3: cleanup...
+        # self.status = 0
+        # 0: idle,   1: active,   2: released,   3: cleanup...
+
     def cleanup(self):
         '''Resets the event for reuse.'''
-        self.status = 0
+        # self.status = 0
         self.active_layer = 0
         self.modifiers = 0
-        num_buttons = len(self.buttons)
-        # self.buttons[:] = self.zeros[:num_buttons]
         self.buttons = 0
-        self.output_keys[:] = self.zeros  # no allocation
-        self.uinput_codes[:] = self.zeros[:6]  # one byte allocation?
-        # for n in range(num_buttons):
-        #     self.buttons[n] = 0
+        # self.output_keys[:] = self.zeros  # no allocation
+        # self.uinput_codes[:] = self.zeros[:6]  # one byte allocation?
 
-        # for n in range(6):
-        #     self.output_keys[n] = 0
-        #     self.uinput_codes[n] = 0
-    def set_key(self, code):
-        '''foo'''
-        if code < 0:
-            self.modifiers |= -code
-        else:
-            for n in range(6):  # step through array
-                if self.output_keys[n] == 0:
-                    self.output_keys[n] = code
+    # def set_key(self, code):
+    #     '''foo'''
+    #     if code < 0:
+    #         self.modifiers |= -code
+    #     else:
+    #         for n in range(6):  # step through array
+    #             if self.output_keys[n] == 0:
+    #                 self.output_keys[n] = code
 
     def compare_buttons(self, new_buttons):
         '''Returns (Bool, Bool), where first bool is True if any new buttons
@@ -109,7 +104,7 @@ class KeyboardEvent:
 
 class InputState:
     '''An instance of this is passed to the input modules to track state.'''
-    def __init__(self, keymap):
+    def __init__(self, ):
         # self.keys = bytearray(num_keys)  # 0/1 per key
         self.buttons = 0                     # accumulated key presses as a bitfield
         self.wheel = 0                    # accumulated detents this tick
@@ -121,8 +116,8 @@ class InputState:
         self.active_events = []  # list of active KeyboardEvent objects
         self.idle_events = []    # list of idle KeyboardEvent objects for reuse
         self.current_event = None  # the current event being processed
-        self.keymap = keymap
-        self.lookup = keymap.LOOKUP  # {layer: {<keys_active>: (<in_chord>, <is_holdtap>,
+        # self.keymap = keymap
+        # self.lookup = keymap.LOOKUP  # {layer: {<keys_active>: (<in_chord>, <is_holdtap>,
                                      #                          <tap_action>, <hold_action>),
 
     def clear_deltas(self):
@@ -159,40 +154,17 @@ class InputState:
         return last_active_event.active_layer
 
 
-def scale_mouse_movement(dx, dy):
-    '''https://github.com/micropython/micropython-lib/blob/master/micropython/usb/usb-device-mouse/usb/device/mouse.py
-    The mouse movement has to be -127 <= delta <= 127, so we scale it using boolean operations.
-    Floats would involve memory allocation, so boolean stuff is better.'''
-    # Scale to 1/2:
-    dx = dx >> 1
-    dy = dy >> 1
-    # Scale to 1/4:
-    # dx = dx >> 1
-    # dy = dy >> 1
-    # Scale to 3/8:
-    # dx = dx * 96 >> 8  # 96 / 256 = 0.375
-    # dy = dy * 96 >> 8
-    if dx < 0:
-        dx = max(-127, dx)
-    if dx > 0:
-        dx = min(dx, 127)
-    if dy < 0:
-        dy = max(-127, dy)
-    if dy > 0:
-        dy = min(127, dy)
-
-    return dx, dy
-
-
 def tick(input_state):
     '''Does stuff every PERIOD_US microseconds.'''
     input_state.clear_deltas()
     mouse = input_state.mouse
     keeb = input_state.keyboard
 
+    # Update all input modules:
     for im in INPUTS:
-        # print(f'Updating:', im)
         im.update_state()
+
+    # Handle mouse movement:
     print("Mouse enabled:", input_state.mouse_enable)
     if input_state.mouse_enable and \
             (input_state.mouse_x or input_state.mouse_y):
@@ -200,13 +172,10 @@ def tick(input_state):
         print("Moving mouse:", mdx, mdy)
         input_state.mouse.move_by(mdx, mdy)
 
-    print()
-    print(input_state.mouse_x, input_state.mouse_y, input_state.mouse_enable,
-          input_state.wheel, input_state.buttons)
-
+    # 
     input_state.tick()
     current_layer = input_state.get_active_layer()
-    active_event = input_state.get_top_event()
+    current_event = input_state.current_event
 
     # Check for exit and shutdown key combos
     # for pin in keymap.EXIT_KEYS:
@@ -218,19 +187,67 @@ def tick(input_state):
     # for n, key in enumerate(input_state.buttons):
     #     if key:
     #         print(n)
-    print(input_state.buttons)
 
-    if not input_state.buttons and input_state.current_event.status == 0:  # idle
-        return  # nothing to do
+    # remove buttons that are part of an active event
+    buttons = input_state.buttons
+    for event in input_state.active_events:
+        buttons &= ~event.buttons
+    print(input_state.buttons, '->', buttons)
 
+    # recycle completed events back to the idle pool
+    for event in input_state.active_events:
+        if not (event.buttons & input_state.buttons):
+            print("Recycling event:", event.action)
+            input_state.recycle_event(event)
+
+    ########
+    # New event block
+    ########
+    if buttons:
+    
     # Check if this is a new event?  Set active_event state to active, set its buttons to
-    # The current buttons. 
+    # The current buttons.
     if input_state.buttons and input_state.current_event.status == 0:  # idle
-        input_state.current_event.status = 1  # active
-        input_state.current_event.buttons = input_state.buttons
-        print("New event:", input_state.current_event.buttons)
+        # current_event.status = 1  # active
+        current_event.buttons = input_state.buttons
+        print("Event starting:", current_event.buttons)
+        current_event.start_time = ticks_us()
 
-    # Check what actions the current event maps to
+    if not current_event.status:
+        return  # nothing to do, no active event
+
+    event_duration = ticks_diff(ticks_us(), current_event.start_time)
+    hold_time_exceeded = event_duration > KEYMAP.HOLD_TIME_MS * 1000
+    any_pressed, any_released = current_event.compare_buttons(input_state.buttons)
+
+    # Check what actions the current event maps to:
+    foo = LOOKUP[current_layer].get(current_event.buttons, (None, None, None, None))
+    hold_action, tap_action, in_chord, is_holdtap = foo
+    print("Actions:", hold_action, tap_action, in_chord, is_holdtap)
+
+    if any_released:
+        current_event.action = tap_action
+        # current_event.status = 2
+        print("Event generated, tap action:", current_event.action)
+    elif hold_time_exceeded:
+        current_event.action = hold_action
+        # current_event.status = 2
+        print("Event generated, hold action:", current_event.action)
+
+    if current_event.status != 1:  # not active
+        input_state.queue_current_event()  # move to active list
+        print("Event queued:", current_event.action)
+
+    active_keys = []
+    for event in input_state.active_events:
+        active_keys.append(event.action)
+    print("Active events:", active_keys)
+
+
+    # pass active keys to hid keyboard
+
+
+
 
 
 def main():
@@ -241,7 +258,7 @@ def main():
     print("Get shapes of all inputs to build state shaps...")
     state_num_keys = 0
 
-    input_state = InputState(keymap)
+    input_state = InputState()
     new = []
     for im in INPUTS:
         im_obj = im.InputModule(input_state)
@@ -267,6 +284,7 @@ def main():
     while not ( input_state.keyboard.is_open()
                 and input_state.mouse.is_open() ):
         pass
+    sleep(5)  # Wait for reconnect before continuiing... 
     print("Mouse and keyboard are initialized...")
 
     print("Initializing input moudles...")
