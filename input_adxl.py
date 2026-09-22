@@ -14,8 +14,8 @@ class InputModule(InputModule):
         '''This doesn't handle any keys.'''
         return 0
 
-    def __init__(self, input_state):
-        super().__init__(input_state)
+    def __init__(self, input_state, debug_print=False):
+        super().__init__(input_state, debug_print)
 
         self.i2c = None
         # Mouse movement learnhing stuff:

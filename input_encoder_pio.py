@@ -36,8 +36,8 @@ def encoder_monitor():
 class InputModule(InputModule):
     '''This extends InputModule with functionality to support 
     adxl gyro and accelerometer mouse input.'''
-    def __init__(self, input_state):
-        super().__init__(input_state)
+    def __init__(self, input_state, debug_print=False):
+        super().__init__(input_state, debug_print)
 
         self.BUTTON_PIN = 5
         self.ENCODER_A = 3

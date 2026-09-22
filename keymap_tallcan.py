@@ -43,7 +43,7 @@ _KEYMAP = (
     # 0 - Base Layer
     ('S',   'T',   'R',   'A',      'A',   'R',   'T',   'S',
      'O',   'I',   'Y',   'E',      'E',   'Y',   'I',   'O',
-          'CTRL', 'SHFT',   '',       '',  'L2_(ENTR)', 'L1_(TAB)',),
+          'CTRL', 'SHFT',   '',       '',  'L2', 'L1',),
     # 1 - Numbers Layer
     ('4',   '3',   '2',   '1',      '1',   '2',   '3',   '4',
      '8',   '7',   '6',   '5',      '5',   '6',   '7',   '8',
@@ -52,18 +52,18 @@ _KEYMAP = (
     ('$',   '#',   '@',   '!',      '!',   '@',   '#',   '$',
      '*',   '&',   '^',   '%',      '%',   '^',   '&',   '*',
              '',    '',    '',       '',    '',    ''),
-    # 3 - Meta Layer
-    ('', '',   '',   '',      '',   '',   '',   '',
-     '', '',   '',   '',      '',   '',   '',   '',
-             '',    '',    '',       '',    '',    ''),
-    # 4 - Navigation Layer
-    ('', '',   '',   '',      '',   '',   '',   '',
-     '', '',   '',   '',      '',   '',   '',   '',
-             '',    '',    '',       '',    '',    ''),
-    # 5 - Game Layer has no chords or fancy stuff for fast response
-    ('', '',   '',   '',      '',   '',   '',   '',
-     '', '',   '',   '',      '',   '',   '',   '',
-             '',    '',    '',       '',    '',    ''),
+#     # 3 - Meta Layer
+#     ('', '',   '',   '',      '',   '',   '',   '',
+#      '', '',   '',   '',      '',   '',   '',   '',
+#              '',    '',    '',       '',    '',    ''),
+#     # 4 - Navigation Layer
+#     ('', '',   '',   '',      '',   '',   '',   '',
+#      '', '',   '',   '',      '',   '',   '',   '',
+#              '',    '',    '',       '',    '',    ''),
+#     # 5 - Game Layer has no chords or fancy stuff for fast response
+#     ('', '',   '',   '',      '',   '',   '',   '',
+#      '', '',   '',   '',      '',   '',   '',   '',
+#              '',    '',    '',       '',    '',    ''),
 )
 
 # Check _ALIASES to see what already exists in the keymap_utils 
@@ -80,7 +80,7 @@ _MY_ALIASES = {'RSHFT': 'RIGHT_SHIFT', }
 import keymap_utils as ku
 # from keymap_utils import *
 _ALIASES = ku.update_aliases(_MY_ALIASES)
-LOOKUP = ku.get_lookup_table(_CHORDS, _KEYMAP, _ALIASES, _GAME_LAYER)
+LOOKUP = ku.get_lookup_table(_CHORDS, _KEYMAP, _LAYOUT, _ALIASES, _GAME_LAYER)
 
 # CHORD_KEYS = ku.get_chording_keys(_CHORDS)
 # # CHORDS = ku.get_chords(_CHORDS

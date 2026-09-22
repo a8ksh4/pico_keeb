@@ -10,8 +10,8 @@ class InputModule(InputModule):
     '''This is a standard pick_keeb input module with init() and 
     get_state() functions to handle keyboard matrix scanning
     using pio. '''
-    def __init__(self, input_state):
-        super().__init__(input_state)
+    def __init__(self, input_state, debug_print=False):
+        super().__init__(input_state, debug_print)
 
         # DIODE_DIR = 'COL2ROW'  # or 'ROW2COL'
         self.COL2ROW = False

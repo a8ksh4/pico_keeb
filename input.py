@@ -28,10 +28,16 @@ def scale_mouse_movement(dx, dy):
 class InputModule:
     '''Base class for input modules.  Each input module should inherit from this
     and implement the get_num_keys, init, and update_state methods.'''
-    def __init__(self, input_state):
+    def __init__(self, input_state, debug_print=False):
         self.state = input_state
         self.keys_bits_offset = 0
         self.state_machine_num = None
+        self.debug_print = debug_print
+
+    def print(self, *args, **kwargs):
+        '''Prints debug information if debug_print is True.'''
+        if self.debug_print:
+            print(*args, **kwargs)
 
     def get_num_keys(self):
         '''Returns the number of keys this module handles.'''

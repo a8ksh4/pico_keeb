@@ -29,8 +29,8 @@ class InputModule(InputModule):
     '''This is a standard pick_keeb input module with init() and 
     get_state() functions to handle keyboard matrix scanning
     using pio. '''
-    def __init__(self, input_state):
-        super().__init__(input_state)
+    def __init__(self, input_state, debug_print=False):
+        super().__init__(input_state, debug_print)
 
         self.PUSH_PIN = 21
         self.PUSH = Pin(self.PUSH_PIN, Pin.IN, Pin.PULL_UP)
@@ -147,6 +147,7 @@ class InputModule(InputModule):
         while self.SM.rx_fifo():          # drain stale samples
             value = self.COUNT_MAX - self.SM.get()
             # print("cap value", value)
+            self.print("cap value", value)
             total += value
             count += 1
 
@@ -154,7 +155,7 @@ class InputModule(InputModule):
             average = total / count
             # print("cap average", average, average < CAP_THRESHOLD)
             self.LAST_TOUCH_STATE = average < self.CAP_THRESHOLD
-            print("Touch average:", average, "vs threshold:", self.CAP_THRESHOLD)
+            self.print("Touch average:", average, "vs threshold:", self.CAP_THRESHOLD)
 
     def update_state(self):
         '''update_state is a standard function in input modules.
