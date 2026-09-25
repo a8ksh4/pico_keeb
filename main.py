@@ -7,6 +7,8 @@ import machine
 
 machine.freq(200_000_000)  # Set the CPU frequency to 200 MHz
 
+import array
+
 import input_encoder_pio
 import input_stick_pio
 import input_matrix
@@ -85,7 +87,9 @@ class InputState:
         self.active_events = []  # list of active KeyboardEvent objects
         self.idle_events = []    # list of idle KeyboardEvent objects for reuse
         self.current_event = None  # the current event being processed
-        self.send_keys = bytearray(10)  # pre-allocated array for sending keys
+        # self.send_keys = bytearray(10)  # pre-allocated array for sending keys
+        # self.send_keys = array.array('b', 10)
+        self.send_keys = [0 for _ in range(10)]
         # hid send_keys can pass up to six regular keys,
         # and puts shift ctrl alt gui in the modifyer byte,
         # but we pass them as regular keys.
@@ -251,7 +255,7 @@ def tick(input_state):
             input_state.send_keys[send_keys_num] = event.action
             send_keys_num += 1
         if event.modifier != 0:
-            print("sent modifier:", event.modifier)
+            # print("sent modifier:", event.modifier)
             input_state.send_keys[send_keys_num] = event.modifier
             send_keys_num += 1
     for n in range(send_keys_num, len(input_state.send_keys)):
@@ -259,8 +263,10 @@ def tick(input_state):
 
     # Send keys to the hid keyboard interface
     # print("Send keys:", input_state.send_keys, 'Num active events:', len(input_state.active_events))
-    send_keys_view = memoryview(input_state.send_keys)[:send_keys_num]
+    # send_keys_view = memoryview(input_state.send_keys)[:send_keys_num]
+    send_keys_view = input_state.send_keys[:send_keys_num]
     result = keeb.send_keys(send_keys_view, timeout_ms=100)
+    print(list(send_keys_view), result)
     # result = keeb.send_keys(input_state.send_keys[:send_keys_num], timeout_ms=100)
     if not result:
         print("Failed to send keys:", input_state.send_keys[:send_keys_num])
