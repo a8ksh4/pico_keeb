@@ -47,7 +47,7 @@ class KeyboardEvent:
     def __init__(self):
         self.set_layer = None
         self.buttons = 0
-        self.modifiers = 0
+        self.modifier = 0
         self.is_held = False
         self.start_time = None
         self.oneshot = False
@@ -57,7 +57,7 @@ class KeyboardEvent:
         '''Resets the event for reuse.'''
         self.set_layer = None
         self.buttons = 0
-        self.modifiers = 0
+        self.modifier = 0
         self.buttons = 0
         self.start_time = None
         self.is_held = False
@@ -183,8 +183,8 @@ def tick(input_state):
     #   if hold_
 
     current_time = ticks_us()
-    foo = LOOKUP[current_layer].get(current_event.buttons, (None, None, None, None, None))
-    tap_action, hold_action, in_chord, oneshot_tap, oneshot_hold = foo
+    foo = LOOKUP[current_layer].get(current_event.buttons, (None, None, None, None, None, None, None))
+    tap_action, hold_action, in_chord, oneshot_tap, oneshot_hold, modifier_tap, modifier_hold = foo
     hold_reqd = hold_action is not None or in_chord
     any_pressed = current_event.buttons != 0
 
@@ -200,7 +200,7 @@ def tick(input_state):
     # Starting event
     elif buttons and not current_event.buttons:
         current_event.buttons = buttons
-        print("Event starting:", current_event.buttons, 'Layer:', current_layer)
+        print("Event starting:", current_event.buttons, current_event.modifier, 'Layer:', current_layer)
         current_event.start_time = current_time
 
     elif new_pressed:  # and buttons and current_event.buttons
@@ -224,18 +224,16 @@ def tick(input_state):
         # Check what actions the current event maps to:
         print("Actions:", tap_action, hold_action, in_chord)
         if current_event.is_held and hold_reqd:  # Hold
-            # if isinstance(hold_action, str) and hold_action.startswith('L'):
-            #     # Layer Shift
-            #     current_event.set_layer = int(hold_action[1:])
-            #     print("set layer:", current_event.set_layer)
-            # else:
             action = hold_action
             oneshot = oneshot_hold
+            modifier = modifier_hold
         else:  # Tap
             action = tap_action
             oneshot = oneshot_tap
-        
+            modifier = modifier_tap
+
         current_event.oneshot = oneshot
+        current_event.modifier = modifier
 
         if isinstance(action, str) and action.startswith('L'):
             current_event.set_layer = int(action[1:])
@@ -251,6 +249,10 @@ def tick(input_state):
         # if event.action in KeyCode:
         if isinstance(event.action, int):
             input_state.send_keys[send_keys_num] = event.action
+            send_keys_num += 1
+        if event.modifier != 0:
+            print("sent modifier:", event.modifier)
+            input_state.send_keys[send_keys_num] = event.modifier
             send_keys_num += 1
     for n in range(send_keys_num, len(input_state.send_keys)):
         input_state.send_keys[n] = 0

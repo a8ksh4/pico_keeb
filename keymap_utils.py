@@ -21,7 +21,13 @@ _ALIASES = {'0': 'N0', '1': 'N1', '2': 'N2', '3': 'N3', '4': 'N4',
             'PGDN': 'PAGEDOWN', 'RGHT': 'RIGHT', 
             'CTRL': 'LEFT_CTRL', 'SHFT': 'LEFT_SHIFT', 'ALT': 'LEFT_ALT',
             'UI': 'LEFT_UI', 'RCTRL': 'RIGHT_CTRL', 'RSHFT': 'RIGHT_SHIFT',
-            'RALT': 'RIGHT_ALT', 'RUI': 'RIGHT_UI', }
+            'RALT': 'RIGHT_ALT', 'RUI': 'RIGHT_UI', 
+
+            '!': 'LEFT_SHIFT:N1', '@': 'LEFT_SHIFT:N2', # '#': 'SHIFT:N3',
+            '$': 'LEFT_SHIFT:N4', '%': 'LEFT_SHIFT:N5', '^': 'LEFT_SHIFT:N6',
+            '&': 'LEFT_SHIFT:N7', '*': 'LEFT_SHIFT:N8', '(': 'LEFT_SHIFT:N9',
+            ')': 'LEFT_SHIFT:N0',
+            '{': 'LEFT_SHIFT:OPEN_BRACKET', '}': 'LEFT_SHIFT:CLOSE_BRACKET'}
 
 def update_aliases(aliases):
     '''Updates the global _ALIASES dictionary with new aliases.'''
@@ -36,12 +42,18 @@ def get_lookup_table(chords, keymap, layout, aliases, game_layer):
     keys against, respective to the active layer, and get 
     actions, etc without any allocations!
     Structure is like:
-    {0: {<keys_active>: (<tap_action>, <hold_action>, <in_chord>),
-         <keys_active>: (<tap_action>, <hold_action>, <in_chord>),
+    {0: {<keys_active>: (<tap_action>, <hold_action>, <in_chord>, ...),
+         <keys_active>: (...),
          ...},
-     1: {<keys_active>: (<tap_action>, <hold_action>, <in_chord>),
+     1: {<keys_active>: (...),
          ...},
      ...}
+
+     Current items in the table list:
+     tap_action, hold_action, in_chord, oneshot_tap, oneshot_hold, shift_mod, ctrl_mod?
+     <keys_active>: (<tap_action>, <hold_actin, <in_chord>,
+                        <oneshot_tap>, <oneshot_hold>, 
+                        <tap_modifiers>, <hold_modifiers>)
     '''
     c_keys = get_chording_keys(chords)
     lookup = {}
@@ -51,8 +63,6 @@ def get_lookup_table(chords, keymap, layout, aliases, game_layer):
         lookup[layer_num] = {}
         for key_num, key in enumerate(keys):
             pin_num = layout[key_num]
-            # if isinstance(key, tuple):
-            #     hold, tap = key
             assert isinstance(key, str), f"Key must be a string: {key}"
             if '_()' in key:
                 hold, tap = key.split('_(')
@@ -60,16 +70,15 @@ def get_lookup_table(chords, keymap, layout, aliases, game_layer):
                 tap = tap[:-1]  # remove trailing ')'
             else:
                 tap, hold = key, None
-            # if hold == '':
-            #     hold = tap
-            hold_action = _lookup(hold)
-            tap_action = _lookup(tap)
+            hold_action, hold_modifier = _lookup(hold)
+            tap_action, tap_modifier = _lookup(tap)
             in_chord = tap_action in c_keys
             pin_byte = 1 << pin_num
             oneshot_tap = False
             oneshot_hold = False
             lookup[layer_num][pin_byte] = (tap_action, hold_action, in_chord,
-                                           oneshot_tap, oneshot_hold)
+                                           oneshot_tap, oneshot_hold,
+                                           tap_modifier, hold_modifier)
     return lookup
 
 def get_chording_keys(chords):
@@ -92,17 +101,23 @@ def get_chording_keys(chords):
 #     return code                                   # plain key, behavior 0
 
 def _lookup(name):
+    modifier = 0
     if name is None:
-        return None
+        return None, modifier
     print('lookup1:', name)
     if name in _ALIASES:
         name = _ALIASES[name]
     print('lookup2:', name)
+    if ':' in name:
+        mod, name = name.split(':')
+        mod = getattr(KeyCode, mod, 0)
+        modifier = mod
+        print('modifier:', modifier)
     if name.startswith('L') and name[1].isdigit():
-        return name  # layer shift, not a keycode
+        return name, modifier  # layer shift, not a keycode
     code = getattr(KeyCode, name, None)  # return None if not found
     print('lookup3:', code)
-    return code
+    return code, modifier
 
 # def get_actions(keymap):
 #     return tuple(array('H', (parse_keys(k) for k in layer)) for layer in keymap)
