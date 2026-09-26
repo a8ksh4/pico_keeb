@@ -36,6 +36,7 @@ PIO_MAP = [0, 4, None, None]
 
 
 PERIOD_US = 1000  # 1 kHz
+# PERIOD_US = 500   # 0.5 kHz
 # PERIOD_US = 1_000_000  # 1 Hz
 DEBUG_INTERVAL = 30_000_000  # 30 seconds
 DEBUG_PRINT = False
@@ -187,8 +188,10 @@ def tick(input_state):
     #   if hold_
 
     current_time = ticks_us()
-    foo = LOOKUP[current_layer].get(current_event.buttons, (None, None, None, None, None, None, None))
-    tap_action, hold_action, in_chord, oneshot_tap, oneshot_hold, modifier_tap, modifier_hold = foo
+    foo = LOOKUP[current_layer].get(current_event.buttons, (None, None, None, None, None, 0, 0))
+    tap_action, hold_action, in_chord, \
+        oneshot_tap, oneshot_hold, \
+        modifier_tap, modifier_hold = foo
     hold_reqd = hold_action is not None or in_chord
     any_pressed = current_event.buttons != 0
 
@@ -254,7 +257,7 @@ def tick(input_state):
         if isinstance(event.action, int):
             input_state.send_keys[send_keys_num] = event.action
             send_keys_num += 1
-        if event.modifier != 0:
+        if event.modifier <0:
             # print("sent modifier:", event.modifier)
             input_state.send_keys[send_keys_num] = event.modifier
             send_keys_num += 1

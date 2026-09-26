@@ -111,6 +111,7 @@ def _lookup(name):
     if ':' in name:
         mod, name = name.split(':')
         mod = getattr(KeyCode, mod, 0)
+        assert(mod is not None)
         modifier = mod
         print('modifier:', modifier)
     if name.startswith('L') and name[1].isdigit():
