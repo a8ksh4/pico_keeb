@@ -12,7 +12,7 @@ import input_encoder_pio
 import input_stick_pio
 import input_matrix_pio
 import input_adxl
-from input import scale_mouse_movement
+from input import MouseScaler
 
 import keymap_tallcan as KEYMAP
 LOOKUP = KEYMAP.LOOKUP
@@ -95,6 +95,7 @@ class InputState:
         self.mouse_x = 0            # fixed-point, e.g. 1/256 px units
         self.mouse_y = 0
         self.mouse_enable = 0
+        self.mouse_scaler = MouseScaler()  # smoothing and speed
         self.mouse = MouseInterface()
         self.keyboard = KeyboardInterface()
         # A fixed pool of events.  Events are marked active rather than moved
@@ -157,10 +158,13 @@ def tick(input_state):
 
     # Handle mouse movement:
     # print("Mouse enabled:", input_state.mouse_enable)
-    if input_state.mouse_enable and \
-            (input_state.mouse_x or input_state.mouse_y):
-        scale_mouse_movement(input_state)
-        mouse.move_by(input_state.mouse_x, input_state.mouse_y)
+    if input_state.mouse_enable:
+        input_state.mouse_scaler.scale(input_state)
+        # Small movements can scale to 0 until the remainders add up.
+        if input_state.mouse_x or input_state.mouse_y:
+            mouse.move_by(input_state.mouse_x, input_state.mouse_y)
+    else:
+        input_state.mouse_scaler.reset()
 
     # The newest active event that sets a layer wins.
     current_layer = 0
@@ -210,6 +214,8 @@ def tick(input_state):
     # any new buttons pressed / any of the event's buttons released
     new_pressed = (current_event.buttons & buttons) != buttons
     new_released = (current_event.buttons & buttons) != current_event.buttons
+    joined_chord = False
+    new_unjoinable = False
 
     if not buttons and not current_event.buttons:
         pass
@@ -222,16 +228,27 @@ def tick(input_state):
         current_event.start_time = current_time
 
     elif new_pressed:  # and buttons and current_event.buttons
-        # current_event.buttons
-        pass
+        combo = current_event.buttons | buttons
+        if in_chord and combo in LOOKUP[current_layer]:
+            # The new keys make (part of) a chord with this event, so they
+            # join it.  The lookup above is now stale, so we wait for the next
+            # tick to process it.
+            current_event.buttons = combo
+            joined_chord = True
+        else:
+            # The new keys can't join this event, so it's done waiting and
+            # the new keys will start their own event.
+            new_unjoinable = True
 
     # Check for event processing needed
     process_current_event = False
-    if not hold_reqd:
+    if joined_chord:
+        pass
+    elif not hold_reqd:
         if any_pressed:
             process_current_event = True
     else:  # hold_reqq!
-        if new_released:
+        if new_released or new_unjoinable:
             assert(any_pressed)
             process_current_event = True
         elif current_event.is_held:  # hold time exceeded
@@ -243,7 +260,9 @@ def tick(input_state):
         if DEBUG_PRINT:
             print("Tap Action/Mod:", tap_action, tap_modifier)
             print("Hold Action/Mod, in_chord:", hold_action, hold_modifier, in_chord)
-        if current_event.is_held and hold_reqd:  # Hold
+        # Hold, unless there's no hold action, like a chord key held past the
+        # chord wait, which falls back to its tap.
+        if current_event.is_held and hold_action is not None:
             action = hold_action
             oneshot = hold_oneshot
             modifier = hold_modifier

@@ -72,7 +72,9 @@ def get_lookup_table(chords, keymap, layout, aliases, game_layer):
                 tap, hold = key, None
             hold_action, hold_modifier = _lookup(hold)
             tap_action, tap_modifier = _lookup(tap)
-            in_chord = tap_action in chords_keys
+            # Keys that are part of a chord wait to see if the rest of it
+            # gets pressed, so this checks the key name, not its keycode.
+            in_chord = tap in chords_keys
             pin_byte = 1 << pin_num
             oneshot_tap = False
             oneshot_hold = False
@@ -82,6 +84,7 @@ def get_lookup_table(chords, keymap, layout, aliases, game_layer):
 
         # add items to the lookup dict for this layer directly for each chord
         add_chording_keys(chords, keys, layout, lookup[layer_num])
+        add_partial_chords(lookup[layer_num])
     return lookup
 
 def _combinations(list_of_lists, origin=False):
@@ -141,9 +144,32 @@ def add_chording_keys(chords, layer_keymap, layout, layer_lookup):
                 
                 assert(chord_byte not in layer_lookup)
                 print('Chord', result, chord_keys, chord_byte, hold_action, hold_modifier)
-                layer_lookup[chord_byte] = (None, hold_action, True,
+                # The chord result is its tap action, so pressing and
+                # releasing the chord sends it.
+                layer_lookup[chord_byte] = (hold_action, None, True,
                                             False, False,
-                                            0, hold_modifier)
+                                            hold_modifier, 0)
+
+
+# Entry for a combination of keys that isn't a chord, but is part of one, so
+# the event keeps waiting for the rest of the chord.  One shared tuple.
+_PARTIAL_CHORD = (None, None, True, False, False, 0, 0)
+
+
+def add_partial_chords(layer_lookup):
+    '''Adds a _PARTIAL_CHORD entry for every combination of two or more keys
+    that is part of a chord in this layer, and isn't already an entry.  This
+    lets chord keys be pressed in any order, e.g. A, T, R for the A+R+T chord
+    even though A+T alone isn't a chord.'''
+    chord_bytes = [key_byte for key_byte, entry in layer_lookup.items()
+                   if entry[2] and key_byte & (key_byte - 1)]
+    for chord_byte in chord_bytes:
+        # Walk every sub-mask of the chord's bits.
+        sub = (chord_byte - 1) & chord_byte
+        while sub:
+            if sub & (sub - 1) and sub not in layer_lookup:  # 2+ keys
+                layer_lookup[sub] = _PARTIAL_CHORD
+            sub = (sub - 1) & chord_byte
 
 
 def get_chording_keys(chords):
@@ -152,7 +178,7 @@ def get_chording_keys(chords):
     isn't an associated hold action (tap only)'''
     out = set()
     for keys in chords.values():
-        out.add(keys)
+        out.update(keys)
     return out
 
 # def parse_keys(s):

@@ -77,6 +77,7 @@ class InputModule(InputModule):
         self.X_DZ = 5          # deadzone in 1/256 units (0.02)
         self.Y_DZ = 5
         self.DZ_CAP = 38       # 0.15
+        self.ADC_SAMPLES_SHIFT = 2  # average 4 ADC reads per axis, less noise
         self._warm = 0
 
         # Per tick results are stored here rather than returned as tuples,
@@ -105,11 +106,16 @@ class InputModule(InputModule):
         self.SM.active(1)
 
     def get_stick_raw_values(self):
-        '''pretty simple raw value read'''
-        x_raw = self.X_ADC.read_u16()
+        '''Reads each axis a few times and averages, since the ADC is noisy.'''
+        x_raw = 0
+        y_raw = 0
+        for _ in range(1 << self.ADC_SAMPLES_SHIFT):
+            x_raw += self.X_ADC.read_u16()
+            y_raw += self.Y_ADC.read_u16()
+        x_raw >>= self.ADC_SAMPLES_SHIFT
+        y_raw >>= self.ADC_SAMPLES_SHIFT
         if self.X_INVERT:
             x_raw = 65535 - x_raw
-        y_raw = self.Y_ADC.read_u16()
         if self.Y_INVERT:
             y_raw = 65535 - y_raw
         self.x_raw = x_raw
@@ -121,6 +127,48 @@ class InputModule(InputModule):
         if span <= 0:
             return 0
         return (v - c) * 256 // span
+
+    def _isqrt(self, n):
+        '''Integer square root, floor(sqrt(n)), without floats (which
+        allocate).  n must be < 2 ** 30.'''
+        res = 0
+        bit = 1 << 28
+        while bit > n:
+            bit >>= 2
+        while bit:
+            if n >= res + bit:
+                n -= res + bit
+                res = (res >> 1) + bit
+            else:
+                res >>= 1
+            bit >>= 2
+        return res
+
+    def _radial_curve(self, x, y):
+        '''Applies the deadzone and response curve to the stick's distance
+        from center, rather than to each axis separately, so the direction is
+        kept.  Per axis, the smaller axis would get zeroed or shrunk more,
+        pulling diagonals toward horizontal/vertical.
+        Rescales so output starts from 0 at the deadzone edge rather than
+        jumping to dz, then squares it, so small deflections give fine
+        control and full deflection is still full speed.  Sets
+        self.stick_x/y.'''
+        dz = self.X_DZ if self.X_DZ > self.Y_DZ else self.Y_DZ
+        r = self._isqrt(x * x + y * y)
+        if r <= dz:
+            self.stick_x = 0
+            self.stick_y = 0
+            return
+        a = (r - dz) * 256 // (256 - dz)
+        if a > 256:
+            a = 256
+        a = a * a >> 8
+        # Scale each axis by a / r, on magnitudes so negative values
+        # don't round further from 0 than positive ones.
+        sx = (x if x > 0 else -x) * a // r
+        sy = (y if y > 0 else -y) * a // r
+        self.stick_x = sx if x > 0 else -sx
+        self.stick_y = sy if y > 0 else -sy
 
     def get_stick_mouse_state(self, touched):
         # global X_LOWER_LIM, X_UPPER_LIM, Y_LOWER_LIM, Y_UPPER_LIM
@@ -160,10 +208,7 @@ class InputModule(InputModule):
             if dy > self.Y_DZ:
                 self.Y_DZ = dy if dy < self.DZ_CAP else self.DZ_CAP
 
-        if -self.X_DZ < xn < self.X_DZ: xn = 0
-        if -self.Y_DZ < yn < self.Y_DZ: yn = 0
-        self.stick_x = xn
-        self.stick_y = yn
+        self._radial_curve(xn, yn)
 
     def update_touch_state(self):
         '''Averages any readings in the cap pio fifo and compares that to the
