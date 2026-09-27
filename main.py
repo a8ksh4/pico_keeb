@@ -10,7 +10,7 @@ import gc
 import array
 import input_encoder_pio
 import input_stick_pio
-import input_matrix
+import input_matrix_pio
 import input_adxl
 from input import scale_mouse_movement
 
@@ -28,10 +28,10 @@ from time import sleep, ticks_us, ticks_add, ticks_diff
 from micropython import const, mem_info
 
 INPUTS = [input_encoder_pio, input_stick_pio,
-          input_matrix, input_adxl]
+          input_matrix_pio, input_adxl]
 # If pio machines are too many instructions, different
 # clocks, ..., they need to be on separate pio blocks.
-PIO_MAP = [0, 4, None, None]
+PIO_MAP = [0, 4, 2, None]
 
 PERIOD_MS = 10  # 100Hz
 # PERIOD_MS = 1  # 1kHz

@@ -35,7 +35,10 @@ class InputModule:
         self.debug_print = debug_print
 
     def print(self, *args, **kwargs):
-        '''Prints debug information if debug_print is True.'''
+        '''Prints debug information if debug_print is True.
+        Calling this allocates (the *args tuple, **kwargs dict and any string
+        formatting) even when debug_print is False, so guard calls from
+        update_state with `if self.debug_print:`.'''
         if self.debug_print:
             print(*args, **kwargs)
 
@@ -65,3 +68,46 @@ class InputModule:
         the main loop. Try not to do anything that will cauce memory allocation
         from here.'''
         raise NotImplementedError
+
+class TestInputState:
+    '''Stand-in for main.InputState so modules can be tested on their own.
+    main.py can't be on the pico during development because the board will
+    try to run it at boot, so the fields the input modules use live here.'''
+    def __init__(self):
+        self.buttons = 0
+        self.wheel = 0
+        self.mouse_x = 0
+        self.mouse_y = 0
+        self.mouse_enable = 0
+
+    def clear_deltas(self):
+        self.wheel = 0
+        self.mouse_x = 0
+        self.mouse_y = 0
+        self.mouse_enable = 0
+
+
+def run_test(module_class, report, delay=0.5, debug_print=False):
+    '''Runs module_class forever, calling report(state, module) each tick.
+    Unless debug_print is on (debug printing allocates), the heap is locked
+    around each update_state call, so any allocation raises a MemoryError
+    pointing at the offending line.'''
+    from time import sleep
+    import micropython
+
+    state = TestInputState()
+    module = module_class(state, debug_print)
+    print("Num keys:", module.get_num_keys())
+    module.init(0, 0)
+    module.update_state()  # the first tick is allowed to allocate
+    while True:
+        state.clear_deltas()
+        if not debug_print:
+            micropython.heap_lock()
+        try:
+            module.update_state()
+        finally:
+            if not debug_print:
+                micropython.heap_unlock()
+        report(state, module)
+        sleep(delay)

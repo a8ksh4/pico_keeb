@@ -39,6 +39,11 @@ class InputModule(InputModule):
         self._wfill = 0
         self._bias_valid = False
 
+        # Latest raw readings.  Stored here rather than returned as tuples,
+        # since returning multiple values allocates a tuple every tick.
+        self.gx = self.gy = self.gz = 0
+        self.ax = self.ay = self.az = 0
+
         # ITG-2305 / ITG-3205 default I2C address is usually 0x68
         self.GYRO_ADDR = 0x68
         self.ADXL_ADDR = 0x53
@@ -120,16 +125,16 @@ class InputModule(InputModule):
 
     def _read_gyro_raw(self):
         self.i2c.readfrom_mem_into(self.GYRO_ADDR, self.GYRO_XOUT_H, self._buf)
-        return self._s16(self._buf[0], self._buf[1]), \
-                self._s16(self._buf[2], self._buf[3]), \
-                self._s16(self._buf[4], self._buf[5])
+        self.gx = self._s16(self._buf[0], self._buf[1])
+        self.gy = self._s16(self._buf[2], self._buf[3])
+        self.gz = self._s16(self._buf[4], self._buf[5])
 
     def _read_adxl_raw(self):
         self.i2c.readfrom_mem_into(self.ADXL_ADDR, self.DATAX0, self._buf)
         # little-endian
-        return self._s16(self._buf[1], self._buf[0]), \
-                self._s16(self._buf[3], self._buf[2]), \
-                self._s16(self._buf[5], self._buf[4])
+        self.ax = self._s16(self._buf[1], self._buf[0])
+        self.ay = self._s16(self._buf[3], self._buf[2])
+        self.az = self._s16(self._buf[5], self._buf[4])
 
     def _spread_ok(self, w):
         lo = hi = w[0]
@@ -181,8 +186,14 @@ class InputModule(InputModule):
 
     def update_state(self):
         '''update_state is a standard function in pico_keeb input modules.'''
-        gx, gy, gz = self._read_gyro_raw()
-        ax, ay, az = self._read_adxl_raw()
+        self._read_gyro_raw()
+        self._read_adxl_raw()
+        gx = self.gx
+        gy = self.gy
+        gz = self.gz
+        ax = self.ax
+        ay = self.ay
+        az = self.az
         self._update_bias(gx, gy, gz, ax*ax + ay*ay + az*az)
         if not self._bias_valid:
             return
@@ -193,31 +204,7 @@ class InputModule(InputModule):
 # MY_CLASS = InputModuleAdxl
 
 if __name__ == "__main__":
-    from time import sleep
-    # It's kinda dumb to copy this class here for testing, but I don't want to have
-    # main.py on the pico while doing development because the board will try to run it
-    # at boot and cause probs.   So here we are!
-    class InputState:
-        def __init__(self, num_keys):
-            self.keys = bytearray(num_keys)
-            self.wheel = []
-            self.mouse_x = 0
-            self.mouse_y = 0
-            self.mouse_enable = 0
-
-        def clear_deltas(self):
-            self.wheel = []
-            self.mouse_x = 0
-            self.mouse_y = 0
-            self.mouse_enable = 0
-    state = InputState(0)
-
-    adxl = InputModuleAdxl(state)
-    num_keys = adxl.get_num_keys()
-    print("Num keys:", num_keys)
-    adxl.init(0, None)
-    while True:
-        state.clear_deltas()
-        adxl.update_state()
-        print(state.mouse_x, state.mouse_y, adxl._bias_valid)
-        sleep(0.1)
+    from input import run_test
+    run_test(InputModule,
+             lambda state, module: print(state.mouse_x, state.mouse_y, module._bias_valid),
+             delay=0.1)

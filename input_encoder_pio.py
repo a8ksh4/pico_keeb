@@ -51,8 +51,10 @@ class InputModule(InputModule):
 
         self.LAST_POSITION = None
         # UP_STATES = ((0, 1), (1, 2), (2, 3), (3, 0))
-        self.UP_STATE = (2, 3)
-        self.DOWN_STATE = (0, 3)
+        # (last, new) transitions, compared as separate ints since building
+        # a tuple to compare against would allocate every tick.
+        self.UP_LAST, self.UP_NEW = 2, 3
+        self.DOWN_LAST, self.DOWN_NEW = 0, 3
 
         self.STATE = input_state
         self.keys_bits_offset = 0
@@ -81,23 +83,22 @@ class InputModule(InputModule):
         '''get_state is a standard function in inupt modules.
         It returns a dict with keys a list of states of any buttons/keys,
         and 'wheel' a list of movement directions.'''
-        global LAST_POSITION
-
         key_value = 1 if not self.PIN_BUTTON.value() else 0
         self.set_key_state(0, key_value)
 
         while self.SM.rx_fifo():
             encoder_position = self.SM.get() & 0b11  # get the last two bits for A and B
-            print("Encoder position:", encoder_position)
+            if self.debug_print:
+                self.print("Encoder position:", encoder_position)
 
             if self.LAST_POSITION is None:
                 self.LAST_POSITION = encoder_position
                 continue
 
-            if (self.LAST_POSITION, encoder_position) == self.UP_STATE:
+            if self.LAST_POSITION == self.UP_LAST and encoder_position == self.UP_NEW:
                 # state['wheel'].append('up')
                 self.STATE.wheel += 1
-            elif (self.LAST_POSITION, encoder_position) == self.DOWN_STATE:
+            elif self.LAST_POSITION == self.DOWN_LAST and encoder_position == self.DOWN_NEW:
                 # state['wheel'].append('down')
                 self.STATE.wheel -= 1
 
@@ -105,30 +106,6 @@ class InputModule(InputModule):
 
 
 if __name__ == "__main__":
-    from time import sleep
-    # It's kinda dumb to copy this class here for testing, but I don't want to have
-    # main.py on the pico while doing development because the board will try to run it
-    # at boot and cause probs.   So here we are!
-    class InputState:
-        def __init__(self, num_keys):
-            # self.keys = b
-            self.keys = 0  # bytearray!
-            self.wheel = 0
-            self.mouse_x = 0
-            self.mouse_y = 0
-            self.mouse_enable = 0
-
-        def clear_deltas(self):
-            self.wheel = 0
-            self.mouse_x = 0
-            self.mouse_y = 0
-            self.mouse_enable = 0
-    state = InputState(1)
-
-    encoder = InputModuleEncoderPio(state)
-    encoder.init(0, 0)
-    while True:
-        state.clear_deltas()
-        encoder.update_state()
-        print(encoder.STATE.wheel, encoder.STATE.keys)
-        sleep(0.5)
+    from input import run_test
+    run_test(InputModule,
+             lambda state, module: print(state.wheel, state.buttons))

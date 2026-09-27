@@ -2,25 +2,32 @@
 comment out the touch stuff if your stick doesn't have it.'''
 
 from input import InputModule
-from machine import ADC, Pin
+from machine import ADC, Pin, freq
 import rp2
 
 @rp2.asm_pio(set_init=rp2.PIO.OUT_LOW, fifo_join=rp2.PIO.JOIN_RX)
 def cap_measure():
+    '''Measures how long the pad takes to discharge through the internal
+    pull-down after being charged high.  A finger adds capacitance, so a
+    larger count means touched.  The counts of 32 discharges are summed into
+    each push for resolution, since a single discharge is only ~70 counts
+    at 200 MHz.'''
     wrap_target()
+    mov(x, invert(null))          # x = 0xFFFFFFFF, counts down across all 32
+    set(y, 31)                    # 32 discharges per push
+    label("measure")
     set(pindirs, 1)               # output
-    set(pins, 1)                  # charge high
+    set(pins, 1)           [31]   # charge high
     nop()                  [31]
-    nop()                  [31]
-    set(pindirs, 0)               # release -> input, starts falling
-    mov(x, invert(null))          # x = 0xFFFFFFFF
+    set(pindirs, 0)               # release -> pull-down discharges the pad
     label("loop")
     jmp(pin, "still_high")        # pin high -> keep counting
-    jmp("done")                   # pin low  -> done
+    jmp("done")                   # pin low  -> this discharge is done
     label("still_high")
     jmp(x_dec, "loop")
     label("done")
-    mov(isr, x)
+    jmp(y_dec, "measure")
+    mov(isr, invert(x))           # push the summed count, a small int
     push(noblock)
     wrap()
 
@@ -35,14 +42,22 @@ class InputModule(InputModule):
         self.PUSH_PIN = 21
         self.PUSH = Pin(self.PUSH_PIN, Pin.IN, Pin.PULL_UP)
 
+        # The pad has no external bleed resistor, so the internal ~50k
+        # pull-down discharges it.  Left floating, the pad picks up 60 Hz hum
+        # through a finger and readings are garbage.  The discharge only
+        # takes ~1us, so the SM runs at the full system clock.
         self.CAP_SENSE_PIN_NUM = 22
-        self.CAP_THRESHOLD = 5000
-        self.COUNT_MAX = 0xFFFFFFFF
-        self.CAP_SENSE_PIN = Pin(self.CAP_SENSE_PIN_NUM, Pin.OUT, value=0)
-        self.SM_FREQ = 1_000_000
+        self.CAP_SENSE_PIN = Pin(self.CAP_SENSE_PIN_NUM, Pin.IN, Pin.PULL_DOWN)
+        self.SM_FREQ = freq()
+
+        # Touch is detected relative to a learned untouched baseline, with
+        # hysteresis.  A touch measured ~+10% over baseline.
+        self.CAP_ON_SHIFT = 4          # touched above baseline + 1/16 (6.25%)
+        self.CAP_OFF_SHIFT = 5         # released below baseline + 1/32 (3.1%)
+        self._cap_base = 0             # baseline << 8, 0 until the first reading
+        self.cap_value = 0             # latest averaged reading, for debugging
 
         self.LAST_TOUCH_STATE = False
-        # TODO: possibly implement smoothing for cap touch
 
         self.X_PIN_NUM = 26
         self.Y_PIN_NUM = 27
@@ -63,6 +78,13 @@ class InputModule(InputModule):
         self.Y_DZ = 5
         self.DZ_CAP = 38       # 0.15
         self._warm = 0
+
+        # Per tick results are stored here rather than returned as tuples,
+        # since returning multiple values allocates a tuple.
+        self.x_raw = 0
+        self.y_raw = 0
+        self.stick_x = 0
+        self.stick_y = 0
 
     def get_num_keys(self):
         '''Tells the main program how many keys this module handles
@@ -90,7 +112,8 @@ class InputModule(InputModule):
         y_raw = self.Y_ADC.read_u16()
         if self.Y_INVERT:
             y_raw = 65535 - y_raw
-        return x_raw, y_raw
+        self.x_raw = x_raw
+        self.y_raw = y_raw
 
     def _axis(self,v, lo, hi, c8):
         c = c8 >> 8
@@ -103,7 +126,9 @@ class InputModule(InputModule):
         # global X_LOWER_LIM, X_UPPER_LIM, Y_LOWER_LIM, Y_UPPER_LIM
         # global X_CENTER, Y_CENTER, X_DZ, Y_DZ, _warm
 
-        x, y = self.get_stick_raw_values()          # ints from read_u16
+        self.get_stick_raw_values()
+        x = self.x_raw          # ints from read_u16
+        y = self.y_raw
         if x < self.X_LOWER_LIM: self.X_LOWER_LIM = x
         if x > self.X_UPPER_LIM: self.X_UPPER_LIM = x
         if y < self.Y_LOWER_LIM: self.Y_LOWER_LIM = y
@@ -137,25 +162,41 @@ class InputModule(InputModule):
 
         if -self.X_DZ < xn < self.X_DZ: xn = 0
         if -self.Y_DZ < yn < self.Y_DZ: yn = 0
-        return xn, yn
+        self.stick_x = xn
+        self.stick_y = yn
 
     def update_touch_state(self):
-        '''This totals up any values in the cap pio fifo.
-        If the average is below the threshold, then touch is true.'''
+        '''Averages any readings in the cap pio fifo and compares that to the
+        learned untouched baseline to update LAST_TOUCH_STATE.'''
         total = 0
         count = 0
-        while self.SM.rx_fifo():          # drain stale samples
-            value = self.COUNT_MAX - self.SM.get()
-            # print("cap value", value)
-            self.print("cap value", value)
-            total += value
+        while self.SM.rx_fifo():
+            total += self.SM.get()
             count += 1
+        if not count:
+            return
+        value = total // count
+        self.cap_value = value
 
-        if count:
-            average = total / count
-            # print("cap average", average, average < CAP_THRESHOLD)
-            self.LAST_TOUCH_STATE = average < self.CAP_THRESHOLD
-            self.print("Touch average:", average, "vs threshold:", self.CAP_THRESHOLD)
+        if not self._cap_base:
+            self._cap_base = value << 8
+        base = self._cap_base >> 8
+
+        if self.LAST_TOUCH_STATE:
+            self.LAST_TOUCH_STATE = value > base + (base >> self.CAP_OFF_SHIFT)
+        else:
+            self.LAST_TOUCH_STATE = value > base + (base >> self.CAP_ON_SHIFT)
+
+        if value < base:
+            # Follow drops quickly, which also recovers from a touch at boot.
+            self._cap_base += ((value << 8) - self._cap_base) >> 2
+        elif not self.LAST_TOUCH_STATE:
+            # Slowly track drift (temperature, etc) while untouched.
+            self._cap_base += ((value << 8) - self._cap_base) >> 8
+
+        if self.debug_print:
+            self.print("cap value", value, "baseline", base,
+                       "touched", self.LAST_TOUCH_STATE)
 
     def update_state(self):
         '''update_state is a standard function in input modules.
@@ -165,9 +206,9 @@ class InputModule(InputModule):
         self.update_touch_state()
         touched = self.LAST_TOUCH_STATE
 
-        stick_x, stick_y = self.get_stick_mouse_state(touched)
-        self.state.mouse_x += stick_x
-        self.state.mouse_y += stick_y
+        self.get_stick_mouse_state(touched)
+        self.state.mouse_x += self.stick_x
+        self.state.mouse_y += self.stick_y
         self.state.mouse_enable = 1 if touched or clicked else 0
 
         #We might be working on bit n of up to 32 bits in STATE.keys,
@@ -178,32 +219,9 @@ class InputModule(InputModule):
 
 
 if __name__ == "__main__":
-    from time import sleep
-    # It's kinda dumb to copy this class here for testing, but I don't want to have
-    # main.py on the pico while doing development because the board will try to run it
-    # at boot and cause probs.   So here we are!
-    class InputState:
-        def __init__(self, num_keys):
-            self.keys = 0
-            self.wheel = []
-            self.mouse_x = 0
-            self.mouse_y = 0
-            self.mouse_enable = 0
-
-        def clear_deltas(self):
-            self.wheel = []
-            self.mouse_x = 0
-            self.mouse_y = 0
-            self.mouse_enable = 0
-    state = InputState(1)
-
-    stick = InputModule(state)
-    stick.init(0, 0)
-    while True:
-        state.clear_deltas()
-        stick.update_state()
-        print(stick.state.mouse_x,
-              stick.state.mouse_y,
-              stick.state.mouse_enable,
-              stick.state.keys)
-        sleep(0.5)
+    from input import run_test
+    run_test(InputModule,
+             lambda state, module: print(state.mouse_x,
+                                         state.mouse_y,
+                                         state.mouse_enable,
+                                         state.buttons))

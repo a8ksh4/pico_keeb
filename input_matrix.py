@@ -63,29 +63,6 @@ class InputModule(InputModule):
 
 
 if __name__ == "__main__":
-    from time import sleep
-    # It's kinda dumb to copy this class here for testing, but I don't want to have
-    # main.py on the pico while doing development because the board will try to run it
-    # at boot and cause probs.   So here we are!
-    class InputState:
-        def __init__(self, num_keys):
-            self.keys = 0
-            self.wheel = []
-            self.mouse_x = 0
-            self.mouse_y = 0
-            self.mouse_enable = 0
-
-        def clear_deltas(self):
-            self.wheel = []
-            self.mouse_x = 0
-            self.mouse_y = 0
-            self.mouse_enable = 0
-    state = InputState(20)
-
-    matrix = InputModuleMatrix(state)
-    matrix.init(0, 0)
-    while True:
-        state.clear_deltas()
-        matrix.update_state()
-        print(matrix.state.keys)
-        sleep(0.5)
+    from input import run_test
+    run_test(InputModule,
+             lambda state, module: print("{0:020b}".format(state.buttons)))
