@@ -91,8 +91,8 @@ class InputState:
         self.idle_events = []    # list of idle KeyboardEvent objects for reuse
         self.current_event = None  # the current event being processed
         # self.send_keys = bytearray(10)  # pre-allocated array for sending keys
-        # self.send_keys = array.array('b', 10)
-        self.send_keys = [0 for _ in range(10)]
+        self.send_keys = array.array('b', [0] * 10)
+        # self.send_keys = [0 for _ in range(10)]
         # hid send_keys can pass up to six regular keys,
         # and puts shift ctrl alt gui in the modifyer byte,
         # but we pass them as regular keys.
@@ -254,8 +254,8 @@ def tick(input_state):
 
     # Send keys to the hid keyboard interface
     # print("Send keys:", input_state.send_keys, 'Num active events:', len(input_state.active_events))
-    # send_keys_view = memoryview(input_state.send_keys)[:send_keys_num]
-    send_keys_view = input_state.send_keys[:send_keys_num]
+    send_keys_view = memoryview(input_state.send_keys)[:send_keys_num]
+    # send_keys_view = input_state.send_keys[:send_keys_num]
     result = keeb.send_keys(send_keys_view, timeout_ms=100)
     # print(list(send_keys_ view), result)
     # result = keeb.send_keys(input_state.send_keys[:send_keys_num], timeout_ms=100)
