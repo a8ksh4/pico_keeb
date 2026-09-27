@@ -13,7 +13,7 @@ _ALIASES = {'0': 'N0', '1': 'N1', '2': 'N2', '3': 'N3', '4': 'N4',
             '5': 'N5', '6': 'N6', '7': 'N7', '8': 'N8', '9': 'N9',
             'ENTR': 'ENTER', 'ESC': 'ESCAPE', 'BKSP': 'BACKSPACE',
             ' ': "SPACE", '-': 'MINUS', '=': 'EQUAL', '[': 'OPEN_BRACKET',
-            ']': 'CLOSED_BRACKET', '\\': 'BACKSLASH', '#': 'HASH',
+            ']': 'CLOSE_BRACKET', '\\': 'BACKSLASH', #  '#': 'HASH', not on US layout
             ';': 'SEMICOLON', "'": 'QUOTE', '`': 'GRAVE', ',': 'COMMA', 
             '.': 'DOT', '/': 'SLASH', 'CAPS': 'CAPS_LOCK',
             'PTSC': 'PRINT_SCREEN', 'SCRL': 'SCROLL_LOCK', 'PAUS': 'PAUSE',
@@ -23,11 +23,13 @@ _ALIASES = {'0': 'N0', '1': 'N1', '2': 'N2', '3': 'N3', '4': 'N4',
             'UI': 'LEFT_UI', 'RCTRL': 'RIGHT_CTRL', 'RSHFT': 'RIGHT_SHIFT',
             'RALT': 'RIGHT_ALT', 'RUI': 'RIGHT_UI', 
 
-            '!': 'LEFT_SHIFT:N1', '@': 'LEFT_SHIFT:N2', # '#': 'SHIFT:N3',
+            '!': 'LEFT_SHIFT:N1', '@': 'LEFT_SHIFT:N2', '#': 'LEFT_SHIFT:N3',
             '$': 'LEFT_SHIFT:N4', '%': 'LEFT_SHIFT:N5', '^': 'LEFT_SHIFT:N6',
             '&': 'LEFT_SHIFT:N7', '*': 'LEFT_SHIFT:N8', '(': 'LEFT_SHIFT:N9',
             ')': 'LEFT_SHIFT:N0',
-            '{': 'LEFT_SHIFT:OPEN_BRACKET', '}': 'LEFT_SHIFT:CLOSE_BRACKET'}
+            '{': 'LEFT_SHIFT:OPEN_BRACKET', '}': 'LEFT_SHIFT:CLOSE_BRACKET',
+            '?': 'LEFT_SHIFT:/SLASH', 'GUI': 'LEFT_UI'
+            }
 
 def update_aliases(aliases):
     '''Updates the global _ALIASES dictionary with new aliases.'''
