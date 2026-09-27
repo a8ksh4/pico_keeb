@@ -1,48 +1,34 @@
-'''This is a standard pick_keeb input module with init() and 
-get_state() functions to handle keyboard matrix scanning
+'''This is a standard pick_keeb input module with init() and
+update_state() functions to handle keyboard matrix scanning
 using pio. '''
 
+from input import InputModule
 from machine import Pin
 import rp2
 
 
-IN_PIN_NUMS = [8, 9, 10, 11]
-OUT_PIN_NUMS = [16, 17, 18, 19, 20]
-# IN_PIN_NUMS = [16, 17, 18, 19, 20]
-# OUT_PIN_NUMS = [8, 9, 10, 11]
-
-IN_PINS = [Pin(n, Pin.IN, Pin.PULL_UP) for n in IN_PIN_NUMS]
-OUT_PINS = [Pin(n, Pin.OUT) for n in OUT_PIN_NUMS]
-
-# SM_FREQ = 1_000_000
-SM_FREQ = 2000
-
-
-@rp2.asm_pio(set_init=rp2.PIO.OUT_LOW, fifo_join=rp2.PIO.JOIN_RX)
+@rp2.asm_pio(set_init=(rp2.PIO.OUT_LOW,) * 4, fifo_join=rp2.PIO.JOIN_RX)
 def  matrix_monitor():
-    '''PIO program to matrix scan a keyboard with up to 32 keys (could use two
+    '''PIO program to matrix scan a 4 row x 5 col keyboard (could use two
     instances for each half of a larger keyboard) and push any state changes to
-    the ouotput fifo.
-    We step through the output pins one at a time and shift
-    the state of the input pins to the OSR.
-    Then we push the osr to the fifo and start over.'''
-    mov(y, invert(null))
+    the rx fifo.
+    We drive the row pins high one at a time and shift the state of the
+    (pulled down) column pins into the ISR.  Rows are scanned last to first
+    so that row 0 ends up in the lowest bits after the left shifts.
+    If the scan differs from the last one, we push it to the fifo.'''
+    mov(y, invert(null))  # impossible last state so the first scan is pushed
 
     label("loop")
-    mov(osr, null)
     mov(isr, null)
 
-    # in_(null, 12)  # Padd the isr for total 32 bits after 4x5 matrix scan
-    set(pins, 0x00001)
+    set(pins, 0b1000)  [3]  # delay lets the column pins settle
     in_(pins, 5)
-    set(pins, 0x00010)
+    set(pins, 0b0100)  [3]
     in_(pins, 5)
-    set(pins, 0x00100)
+    set(pins, 0b0010)  [3]
     in_(pins, 5)
-    set(pins, 0x01000)
+    set(pins, 0b0001)  [3]
     in_(pins, 5)
-    # set(pins, 0x10000)
-    # in_(pins, 4)
 
     mov(x, isr)
     jmp(x_not_y, "state_changed")
@@ -50,44 +36,111 @@ def  matrix_monitor():
 
     label("state_changed")
     mov(y, x)
-    mov(osr, y)
-    push(noblock)
+    push(noblock)  # push still has the scan in the isr
 
     jmp("loop")
 
 
-def init(pio_machine_num):
-    '''Init is a standard function for input modules that 
-    can perform any needede initialization.  Probably this
-    is on ly needed to assign unique state machine nums.'''
-    global SM
-    SM = rp2.StateMachine(pio_machine_num, matrix_monitor,
-                          freq=SM_FREQ,
-                          in_base=IN_PINS[0],
-                          set_base=OUT_PINS[0])
-    SM.active(1)
+class InputModule(InputModule):
+    '''This is a standard pick_keeb input module with init() and
+    update_state() functions to handle keyboard matrix scanning
+    using pio. '''
+    def __init__(self, input_state, debug_print=False):
+        super().__init__(input_state, debug_print)
 
+        # Rows are driven, cols are read (diodes row -> col), same as input_matrix.
+        # The pio program needs both pin groups to be consecutive gpios, but
+        # the order listed here sets the key bit order: bit = row * 5 + col_index
+        self.ROWS = [8, 9, 10, 11]
+        self.COLS = [16, 17, 18, 20, 19]
 
-def get_state():
-    '''get_state is a standard function in inupt modules.
-    It returns a dict with keys a list of boolean states of any buttons/keys
-    In this case, we have 20 relevant keys from the 4x5 matrix, so
-    we'll return a list of 20 booleans in the dict.
-    TODO: If we have bouncing issues, we may need to add some debouncing logic
-            here.  Rather than drop older states, we could track history or something.'''
-    state = 0
-    while SM.rx_fifo():
-        state = SM.get() # nuke all but latest update
-        print("matrix state: {0:020b}".format(state))
-    keys = [bool(state & (1 << n)) for n in range(20)]
-    state = {'keys': keys}
-    return state
+        self.ROW_BASE = min(self.ROWS)
+        self.COL_BASE = min(self.COLS)
+        self.OUT_PINS = [Pin(n, Pin.OUT) for n in range(self.ROW_BASE, self.ROW_BASE + len(self.ROWS))]
+        self.IN_PINS = [Pin(n, Pin.IN, Pin.PULL_DOWN) for n in range(self.COL_BASE, self.COL_BASE + len(self.COLS))]
+
+        self.NUM_KEYS = len(self.ROWS) * len(self.COLS)
+        self.KEYS_MASK = (1 << self.NUM_KEYS) - 1
+
+        # The pio scan has bits in gpio order.  REMAP[bit] is the scan bit that
+        # holds key bit n, so we can reorder to match self.ROWS/self.COLS.
+        remap = []
+        for row in self.ROWS:
+            for col in self.COLS:
+                remap.append((row - self.ROW_BASE) * len(self.COLS) + (col - self.COL_BASE))
+        self.REMAP = bytes(remap)
+
+        self.SM_FREQ = 1_000_000
+        self.SM = None
+
+        # The PIO only pushes on change, so hold the latest scan between ticks.
+        self.LAST_SCAN = 0
+
+    def get_num_keys(self):
+        '''Tells the main program how many keys this module handles
+        so the main program knows how much memory to allocate for it.'''
+        return self.NUM_KEYS
+
+    def init(self, keys_bits_offset, state_machine_num=None):
+        '''Init is a standard function for pico_keeb input modules that
+        we use to store a referenc to the global InputState oject so
+        any inputs can be recorded in it each tick without any allocation.
+        We also can perform any needed module initialization here, like
+        pio state machines as well as other hardware setup.'''
+        super().init(keys_bits_offset, state_machine_num)
+        self.SM = rp2.StateMachine(state_machine_num, matrix_monitor,
+                                   freq=self.SM_FREQ,
+                                   in_base=self.IN_PINS[0],
+                                   set_base=self.OUT_PINS[0])
+        self.SM.active(1)
+
+    def remap_scan(self, scan):
+        '''Reorders the gpio ordered pio scan into key bit order.'''
+        keys = 0
+        for n in range(self.NUM_KEYS):
+            keys |= ((scan >> self.REMAP[n]) & 1) << n
+        return keys
+
+    def update_state(self):
+        '''update_state is a standard function in input modules.
+        Drains the pio fifo, keeping only the latest matrix scan, and writes
+        its bits into state.buttons at this module's offset.
+        TODO: If we have bouncing issues, we may need to add some debouncing logic
+                here.  Rather than drop older states, we could track history or something.'''
+        while self.SM.rx_fifo():
+            scan = self.SM.get() & self.KEYS_MASK  # nuke all but latest update
+            self.LAST_SCAN = self.remap_scan(scan)
+            self.print("matrix state: {0:020b}".format(self.LAST_SCAN))
+
+        offset = self.keys_bits_offset
+        self.state.buttons = (self.state.buttons & ~(self.KEYS_MASK << offset)) \
+            | (self.LAST_SCAN << offset)
 
 
 if __name__ == "__main__":
     from time import sleep
-    init(0)
+    # It's kinda dumb to copy this class here for testing, but I don't want to have
+    # main.py on the pico while doing development because the board will try to run it
+    # at boot and cause probs.   So here we are!
+    class InputState:
+        def __init__(self):
+            self.buttons = 0
+            self.wheel = 0
+            self.mouse_x = 0
+            self.mouse_y = 0
+            self.mouse_enable = 0
+
+        def clear_deltas(self):
+            self.wheel = 0
+            self.mouse_x = 0
+            self.mouse_y = 0
+            self.mouse_enable = 0
+    state = InputState()
+
+    matrix = InputModule(state, debug_print=True)
+    matrix.init(0, 0)
     while True:
-        changes = get_state()
-        print(changes)
+        state.clear_deltas()
+        matrix.update_state()
+        print("{0:020b}".format(state.buttons))
         sleep(1)
