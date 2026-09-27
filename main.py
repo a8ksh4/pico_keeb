@@ -4,11 +4,10 @@
 # pylint: disable=import-error
 
 import machine
-
 machine.freq(200_000_000)  # Set the CPU frequency to 200 MHz
 
+import gc
 import array
-
 import input_encoder_pio
 import input_stick_pio
 import input_matrix
@@ -34,9 +33,12 @@ INPUTS = [input_encoder_pio, input_stick_pio,
 # clocks, ..., they need to be on separate pio blocks.
 PIO_MAP = [0, 4, None, None]
 
-
-PERIOD_US = 1000  # 1 kHz
+PERIOD_MS = 10  # 100Hz
+# PERIOD_MS = 1  # 1kHz
+PERIOD_US = PERIOD_MS * 1000
 # PERIOD_US = 500   # 0.5 kHz
+# PERIOD_US = 1000  # 1 kHz
+
 # PERIOD_US = 1_000_000  # 1 Hz
 DEBUG_INTERVAL = 30_000_000  # 30 seconds
 DEBUG_PRINT = False
@@ -170,34 +172,19 @@ def tick(input_state):
     ########
     # New event block
     ########
-    # variables:
-    # is_held, any_pressed, any_released, in_chord, buttons, c_e.buttons
-    # Wait for is_held if:
-    #   * in_chord
-    #   * hold_action is not None
-    # Deciding Variables: hold_reqd, any_pressed, new_pressed, new_released, is_held
-    # hold_reqd | is_held   | any_pressed | new_pressed | new_released | GO
-    # N         | N         | N           | N           | N             | N
-    # N         | N         | N         | N             | Y             | N/invalid
-    # N         | N         | N         | Y             | N             | N/invalid
-    # N         |           | N         | Y             | Y             | N/invalid
-    # N         | N
-    # if event_started - have start time and buttons
-    #   look up actions, is_chord
-    #   check is_held
-    #   if hold_
+
 
     current_time = ticks_us()
     foo = LOOKUP[current_layer].get(current_event.buttons, (None, None, None, None, None, 0, 0))
     tap_action, hold_action, in_chord, \
-        oneshot_tap, oneshot_hold, \
-        modifier_tap, modifier_hold = foo
+        tap_oneshot, hold_oneshot, \
+        tap_modifier, hold_modifier = foo
     hold_reqd = hold_action is not None or in_chord
     any_pressed = current_event.buttons != 0
 
     if current_event.start_time is not None:
         held_time = current_time - current_event.start_time
-        current_event.is_held = held_time > KEYMAP.HOLD_TIME_MS * 1000
+        current_event.is_held = held_time > KEYMAP.HOLD_TIME_US
 
     new_pressed, new_released = current_event.compare_buttons(buttons)
 
@@ -229,15 +216,16 @@ def tick(input_state):
 
     if process_current_event:
         # Check what actions the current event maps to:
-        print("Actions:", tap_action, hold_action, in_chord)
+        print("Tap Action/Mod:", tap_action, tap_modifier)
+        print("Hold Action/Mod, in_chord:", hold_action, hold_modifier, in_chord)
         if current_event.is_held and hold_reqd:  # Hold
             action = hold_action
-            oneshot = oneshot_hold
-            modifier = modifier_hold
+            oneshot = hold_oneshot
+            modifier = hold_modifier
         else:  # Tap
             action = tap_action
-            oneshot = oneshot_tap
-            modifier = modifier_tap
+            oneshot = tap_oneshot
+            modifier = tap_modifier
 
         current_event.oneshot = oneshot
         current_event.modifier = modifier
@@ -257,7 +245,7 @@ def tick(input_state):
         if isinstance(event.action, int):
             input_state.send_keys[send_keys_num] = event.action
             send_keys_num += 1
-        if event.modifier <0:
+        if event.modifier < 0:
             # print("sent modifier:", event.modifier)
             input_state.send_keys[send_keys_num] = event.modifier
             send_keys_num += 1
@@ -269,7 +257,7 @@ def tick(input_state):
     # send_keys_view = memoryview(input_state.send_keys)[:send_keys_num]
     send_keys_view = input_state.send_keys[:send_keys_num]
     result = keeb.send_keys(send_keys_view, timeout_ms=100)
-    print(list(send_keys_view), result)
+    # print(list(send_keys_ view), result)
     # result = keeb.send_keys(input_state.send_keys[:send_keys_num], timeout_ms=100)
     if not result:
         print("Failed to send keys:", input_state.send_keys[:send_keys_num])
@@ -331,11 +319,15 @@ def main():
     # to trigger the action.  
 
     print("Looping forever...")
+    gc.collect()
     next_t = ticks_us()
     next_debug_t = next_t
+    tick_count = 0
+    tick_rem_avg = 0
     while True:
         if ticks_diff(next_debug_t, ticks_us()) <= 0:
             next_debug_t = ticks_add(ticks_us(), DEBUG_INTERVAL)
+            print("Ticks Avg:", tick_rem_avg)
             print("Debug info:")
             print("  * Active events:", len(input_state.active_events))
             print("  * Idle events:", len(input_state.idle_events))
@@ -348,6 +340,9 @@ def main():
             mem_info()
         tick(input_state)
         next_t = ticks_add(next_t, PERIOD_US)
+        diff_t = (next_t - ticks_us()) / 1000
+        tick_rem_avg = (diff_t + tick_count*tick_rem_avg) / (tick_count + 1)
+        tick_count += 1
         while ticks_diff(next_t, ticks_us()) > 0:
             pass
 

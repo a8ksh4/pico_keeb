@@ -55,7 +55,7 @@ def get_lookup_table(chords, keymap, layout, aliases, game_layer):
                         <oneshot_tap>, <oneshot_hold>, 
                         <tap_modifiers>, <hold_modifiers>)
     '''
-    c_keys = get_chording_keys(chords)
+    chords_keys = get_chording_keys(chords)
     lookup = {}
     print("Building lookup table...")
     for layer_num, keys in enumerate(keymap):
@@ -72,20 +72,88 @@ def get_lookup_table(chords, keymap, layout, aliases, game_layer):
                 tap, hold = key, None
             hold_action, hold_modifier = _lookup(hold)
             tap_action, tap_modifier = _lookup(tap)
-            in_chord = tap_action in c_keys
+            in_chord = tap_action in chords_keys
             pin_byte = 1 << pin_num
             oneshot_tap = False
             oneshot_hold = False
             lookup[layer_num][pin_byte] = (tap_action, hold_action, in_chord,
                                            oneshot_tap, oneshot_hold,
                                            tap_modifier, hold_modifier)
+
+        # add items to the lookup dict for this layer directly for each chord
+        add_chording_keys(chords, keys, layout, lookup[layer_num])
     return lookup
 
+def _combinations(list_of_lists, origin=False):
+    '''returns list of all combinations of elements from list
+    of lists.'''
+    if origin:
+        print("Combinations lol:", list_of_lists)
+    out = []
+    # sublist = list_of_lists.pop()
+    sublist = list_of_lists[0]
+    sublist = [[element] for element in sublist]  # transpose?
+    if len(list_of_lists) == 1:  # last one
+        return sublist
+
+    # at least one more sub list in the list of lists
+    remaining = list_of_lists[1:]
+    combs = _combinations(remaining)
+
+    out = []
+    for element in sublist:
+        for comb in combs:
+            out.append(element + comb)
+    if origin:
+        print("Combinations out:", out)
+    return out
+
+
+def add_chording_keys(chords, layer_keymap, layout, layer_lookup):
+    '''For one layer, get the input bytecode associated with
+    each chord in a dict that will be returned and merged with the direct
+    key lookup dict for that layer.'''
+    
+    # Chords are all the "hold" values.
+    for result, chord_keys in chords.items():
+        hold_action, hold_modifier = _lookup(result)  # Handle alias or whatever.
+        # chord_byte = 0
+        pin_byte_sets = []
+        for ck in chord_keys:
+            if ck not in layer_keymap:
+                # chord doesn't work on this layer
+                break
+            # keymap_num = layer_keymap.index(ck)
+            keymap_nums = [n for n, k in enumerate(layer_keymap) if k == ck]
+            # pin_num = layout[keymap_num]
+            pin_nums = [layout[kn] for kn in keymap_nums]
+            # pin_byte = 1 << pin_num
+            pin_bytes = [1 << pn for pn in pin_nums]
+            # chord_byte |= pin_byte
+            pin_byte_sets.append(pin_bytes)
+        else:
+            # chord works on this layer, so lets add it
+            pin_byte_combs = _combinations(pin_byte_sets, True)
+            for comb in pin_byte_combs:
+                chord_byte = 0
+                for key_byte in comb:
+                    chord_byte |= key_byte
+                
+                assert(chord_byte not in layer_lookup)
+                print('Chord', result, chord_keys, chord_byte, hold_action, hold_modifier)
+                layer_lookup[chord_byte] = (None, hold_action, True,
+                                            False, False,
+                                            0, hold_modifier)
+
+
 def get_chording_keys(chords):
-    keys = set()
-    for ckeys in chords.values():
-        keys.update(ckeys)
-    return keys
+    '''Returns a set of keys used in any chord so that we know to
+    wait for hold timeout on actions using these keys even if there
+    isn't an associated hold action (tap only)'''
+    out = set()
+    for keys in chords.values():
+        out.add(keys)
+    return out
 
 # def parse_keys(s):
 #     if not s:
@@ -114,7 +182,7 @@ def _lookup(name):
         assert(mod is not None)
         modifier = mod
         print('modifier:', modifier)
-    if name.startswith('L') and name[1].isdigit():
+    if name.startswith('L') and len(name) > 1 and name[1].isdigit():
         return name, modifier  # layer shift, not a keycode
     code = getattr(KeyCode, name, None)  # return None if not found
     print('lookup3:', code)

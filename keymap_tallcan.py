@@ -23,10 +23,14 @@ EXIT_KEYS = bytes((12, 13, 14, 15, 10, 9, 8, 7))
 # shutdown_keys will signal the device to power down.
 SHUTDOWN_KEYS = bytes((12, 13, 14, 15, 17, 18, 19, 20))
 
-HOLD_TIME_MS = 100  # how long to wait for a hold tap to become a hold
+HOLD_TIME_MS = 200  # how long to wait for a hold tap to become a hold
                     # and how long to wait for chords to be completed.
+                    # 200 (1/5th of a second) is recommended. Increase
+                    # a little when learning.
+HOLD_TIME_US = 1000 * HOLD_TIME_MS
 _GAME_LAYER = 5
-# Chords are tbd
+
+# Don't use Aliases in chords (?)
 _CHORDS = {
     # A
     'B': ('E', 'O'),
