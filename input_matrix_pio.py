@@ -88,6 +88,8 @@ class InputModule(InputModule):
         We also can perform any needed module initialization here, like
         pio state machines as well as other hardware setup.'''
         super().init(keys_bits_offset, state_machine_num)
+        if state_machine_num is None:
+            print("Did you update PIO_MAP in main.py with a state machine numbers?")
         self.SM = rp2.StateMachine(state_machine_num, matrix_monitor,
                                    freq=self.SM_FREQ,
                                    in_base=self.IN_PINS[0],
@@ -110,7 +112,8 @@ class InputModule(InputModule):
         while self.SM.rx_fifo():
             scan = self.SM.get() & self.KEYS_MASK  # nuke all but latest update
             self.LAST_SCAN = self.remap_scan(scan)
-            self.print("matrix state: {0:020b}".format(self.LAST_SCAN))
+            if self.debug_print:
+                self.print("matrix state: {0:020b}".format(self.LAST_SCAN))
 
         offset = self.keys_bits_offset
         self.state.buttons = (self.state.buttons & ~(self.KEYS_MASK << offset)) \
@@ -118,29 +121,7 @@ class InputModule(InputModule):
 
 
 if __name__ == "__main__":
-    from time import sleep
-    # It's kinda dumb to copy this class here for testing, but I don't want to have
-    # main.py on the pico while doing development because the board will try to run it
-    # at boot and cause probs.   So here we are!
-    class InputState:
-        def __init__(self):
-            self.buttons = 0
-            self.wheel = 0
-            self.mouse_x = 0
-            self.mouse_y = 0
-            self.mouse_enable = 0
-
-        def clear_deltas(self):
-            self.wheel = 0
-            self.mouse_x = 0
-            self.mouse_y = 0
-            self.mouse_enable = 0
-    state = InputState()
-
-    matrix = InputModule(state, debug_print=True)
-    matrix.init(0, 0)
-    while True:
-        state.clear_deltas()
-        matrix.update_state()
-        print("{0:020b}".format(state.buttons))
-        sleep(1)
+    from input import run_test
+    run_test(InputModule,
+             lambda state, module: print("{0:020b}".format(state.buttons)),
+             delay=1)

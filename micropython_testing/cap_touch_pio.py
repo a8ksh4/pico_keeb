@@ -2,62 +2,55 @@
 Capacitive touch measurement using RP2040 PIO (MicroPython).
 
 The PIO program charges the cap pin HIGH, switches to input, then counts
-(by decrementing X from 0xFFFFFFFF) for as long as the pin stays HIGH.
-When the pin falls LOW, it pushes the remaining X to the FIFO.
+for as long as the pin stays HIGH.  The pad has no external bleed resistor,
+so the internal ~50k pull-down discharges it.  (Left floating, the pad picks
+up 60 Hz hum through a finger and readings land on multiples of 16.6 ms.)
 
-A longer discharge (pin stays high longer) => smaller X => larger
-"count" after we invert it in Python. Larger count == touched.
+Touching adds capacitance, so it takes longer to fall -> higher count.
 
-Wiring assumption (same RC topology as the original time_pulse_us version):
-the cap pin is driven high to charge, then released to input and bleeds
-toward low through the external resistor / finger capacitance. Touching
-adds capacitance, so it takes longer to fall -> higher count.
-
-If your hardware bleeds the *other* direction, flip the jmp(pin) sense
-(see NOTE in the asm) and charge low instead.
+A single discharge only takes ~1us, so the state machine runs at the full
+system clock (~72 counts at 200 MHz), and the PIO sums 32 discharges into
+each push for resolution.
 """
 
 import rp2
-from machine import Pin
+from machine import Pin, freq
 import time
 
 # ---- Configuration ---------------------------------------------------------
 
 CAP_PIN_NUM = 22          # GPIO the sensor pad is on
-SM_FREQ = 1_000_000       # PIO state machine clock (Hz). 1 MHz = 1 count/us-ish
-CAP_THRESHOLD = 10000      # set by calibrate(); placeholder default
-
-COUNT_MAX = 0xFFFFFFFF     # X starts here and decrements
+SM_FREQ = freq()          # PIO state machine clock: the full system clock
+CAP_THRESHOLD = 2400      # set by calibrate(); placeholder default
 
 
 # ---- PIO program -----------------------------------------------------------
 
-@rp2.asm_pio(set_init=rp2.PIO.OUT_LOW)
+@rp2.asm_pio(set_init=rp2.PIO.OUT_LOW, fifo_join=rp2.PIO.JOIN_RX)
 def cap_measure():
     wrap_target()
+    mov(x, invert(null))          # x = 0xFFFFFFFF, counts down across all 32
+    set(y, 31)                    # 32 discharges per push
 
     # --- charge phase: drive pin high ---
+    label("measure")
     set(pindirs, 1)               # pin = output
-    set(pins, 1)                  # drive high to charge
-    nop()                  [31]   # let it charge (tune if needed)
+    set(pins, 1)           [31]   # drive high to charge
     nop()                  [31]
 
     # --- discharge / measure phase ---
-    set(pindirs, 0)               # release: pin = input, starts falling
-    mov(x, invert(null))          # x = 0xFFFFFFFF
+    set(pindirs, 0)               # release: pull-down discharges the pad
 
     label("loop")
     jmp(pin, "still_high")        # pin HIGH -> keep counting
-    jmp("done")                   # pin LOW  -> finished
-    # NOTE: to invert sense (cap charges low / bleeds high), swap the two
-    # lines above: jmp(pin, "done") then jmp("still_high").
+    jmp("done")                   # pin LOW  -> this discharge is done
 
     label("still_high")
     jmp(x_dec, "loop")            # x-- ; loop while x != 0
-    # if x underflows we just fall through to done (saturated)
 
     label("done")
-    mov(isr, x)                   # report remaining X
+    jmp(y_dec, "measure")         # next discharge until 32 are summed
+    mov(isr, invert(x))           # report the summed count
     push(noblock)                 # don't stall if FIFO full
     wrap()
 
@@ -67,7 +60,7 @@ def cap_measure():
 class CapTouch:
     def __init__(self, pin_num=CAP_PIN_NUM, sm_id=0, freq=SM_FREQ,
                  threshold=CAP_THRESHOLD):
-        self.pin = Pin(pin_num, Pin.OUT, value=0)
+        self.pin = Pin(pin_num, Pin.IN, Pin.PULL_DOWN)
         self.threshold = threshold
         self.sm = rp2.StateMachine(
             sm_id, cap_measure,
@@ -88,20 +81,21 @@ class CapTouch:
         Drains stale samples first, then collects fresh ones.
         """
         self._drain()
-        counts = []
+        total = 0
         for _ in range(samples):
-            x = self.sm.get()                 # blocks for one fresh sample
-            counts.append(COUNT_MAX - x)      # invert: bigger = longer
-        return sum(counts) // len(counts)
+            total += self.sm.get()            # blocks for one fresh sample
+        return total // samples
 
     def touched(self, samples=4):
         return self.read_raw(samples) > self.threshold
 
-    def calibrate(self, seconds=5, margin=0.4):
+    def calibrate(self, seconds=5):
         """
         Interactive calibration.
         Phase 1: don't touch (baseline). Phase 2: hold touch.
-        Sets self.threshold between the two and returns (open_avg, touch_avg).
+        Sets self.threshold midway between the two medians and returns
+        (open_median, touch_median).  Medians ignore the moments you were
+        moving your finger on or off the pad.
         """
         def _sample_window(label):
             print(label)
@@ -111,30 +105,31 @@ class CapTouch:
             while time.ticks_diff(t_end, time.ticks_ms()) > 0:
                 vals.append(self.read_raw())
                 time.sleep_ms(50)
-            return min(vals), sum(vals) // len(vals), max(vals)
+            vals.sort()
+            return vals[0], vals[len(vals) // 2], vals[-1]
 
-        o_min, o_avg, o_max = _sample_window(
+        o_min, o_med, o_max = _sample_window(
             "Calibrating: DO NOT touch the sensor...")
-        print("  open  min/avg/max =", o_min, o_avg, o_max)
+        print("  open  min/median/max =", o_min, o_med, o_max)
 
-        t_min, t_avg, t_max = _sample_window(
+        t_min, t_med, t_max = _sample_window(
             "Calibrating: HOLD your finger on the sensor...")
-        print("  touch min/avg/max =", t_min, t_avg, t_max)
+        print("  touch min/median/max =", t_min, t_med, t_max)
 
-        # threshold = baseline + margin of the gap
-        gap = t_min - o_max
-        if gap <= 0:
-            print("WARNING: open and touched ranges overlap; "
+        if t_med <= o_max:
+            print("WARNING: touched median is within the open range; "
                   "check wiring / charge timing.")
-        self.threshold = o_max + int(max(gap, 1) * margin)
+        self.threshold = (o_med + t_med) // 2
+        print("  touched / open = {:.2f}".format(t_med / o_med))
         print("  -> threshold set to", self.threshold)
-        return o_avg, t_avg
+        return o_med, t_med
 
 
 # ---- Demo ------------------------------------------------------------------
 
 def demo():
     cap = CapTouch()
+    print("SM freq:", SM_FREQ)
     cap.calibrate()
     print("Running. Ctrl-C to stop.")
     try:
