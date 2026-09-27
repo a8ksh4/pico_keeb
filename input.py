@@ -1,12 +1,14 @@
 '''Input module that can be extended by all other input modules.'''
 
-def scale_mouse_movement(dx, dy):
+def scale_mouse_movement(state):
     '''https://github.com/micropython/micropython-lib/blob/master/micropython/usb/usb-device-mouse/usb/device/mouse.py
-    The mouse movement has to be -127 <= delta <= 127, so we scale it using boolean operations.
-    Floats would involve memory allocation, so boolean stuff is better.'''
+    The mouse movement has to be -127 <= delta <= 127, so we scale
+    state.mouse_x and mouse_y in place using boolean operations.
+    Floats would involve memory allocation, so boolean stuff is better,
+    and scaling in place avoids allocating a tuple to return.'''
     # Scale to 1/2:
-    dx = dx >> 1
-    dy = dy >> 1
+    dx = state.mouse_x >> 1
+    dy = state.mouse_y >> 1
     # Scale to 1/4:
     # dx = dx >> 1
     # dy = dy >> 1
@@ -22,7 +24,8 @@ def scale_mouse_movement(dx, dy):
     if dy > 0:
         dy = min(127, dy)
 
-    return dx, dy
+    state.mouse_x = dx
+    state.mouse_y = dy
 
 
 class InputModule:

@@ -25,7 +25,7 @@ from usb.device.keyboard import KeyboardInterface, KeyCode, LEDCode
 
 from time import sleep, ticks_us, ticks_add, ticks_diff
 
-from micropython import const, mem_info
+from micropython import const, mem_info, heap_lock, heap_unlock
 
 INPUTS = [input_encoder_pio, input_stick_pio,
           input_matrix_pio, input_adxl]
@@ -42,6 +42,20 @@ PERIOD_US = PERIOD_MS * 1000
 # PERIOD_US = 1_000_000  # 1 Hz
 DEBUG_INTERVAL = 30_000_000  # 30 seconds
 DEBUG_PRINT = False
+# Lock the heap around each tick, so anything that allocates raises a
+# MemoryError at the offending line.  For development only: it crashes the
+# keyboard on the first allocation, and must be off when DEBUG_PRINT is on.
+HEAP_LOCK_TICK = False
+
+NUM_EVENTS = 9  # max simultaneous events (keys / chords held)
+
+# Returned by lookups for key combinations not in the keymap.  A module level
+# constant, so a new tuple isn't built for every lookup.
+_NO_ACTION = (None, None, None, None, None, 0, 0)
+
+# Layer actions ('L1', 'L2', ...) to layer numbers, filled in by main() so
+# the tick doesn't have to parse strings.
+LAYER_NUMS = {}
 
 MOUSE_SCALE = 0.5  # Must be less than 0.5...
 
@@ -50,6 +64,8 @@ class KeyboardEvent:
     '''We pre-allocate a few of these at start and use them to associate
     key presses with actions.  We  call cleanup when the event is done.'''
     def __init__(self):
+        self.active = False  # True once queued, until recycled
+        self.seq = 0         # queue order, the newest active layer wins
         self.set_layer = None
         self.buttons = 0
         self.modifier = 0
@@ -60,21 +76,15 @@ class KeyboardEvent:
 
     def cleanup(self):
         '''Resets the event for reuse.'''
+        self.active = False
+        self.seq = 0
         self.set_layer = None
         self.buttons = 0
         self.modifier = 0
-        self.buttons = 0
         self.start_time = None
         self.is_held = False
         self.oneshot = False
         self.action = None
-
-    def compare_buttons(self, new_buttons):
-        '''Returns (Bool, Bool), where first bool is True if any new buttons
-        are pressed, and second bool is True if any buttons were released.'''
-        any_pressed = (self.buttons & new_buttons) != new_buttons
-        any_released = (self.buttons & new_buttons) != self.buttons
-        return any_pressed, any_released
 
 
 class InputState:
@@ -87,15 +97,21 @@ class InputState:
         self.mouse_enable = 0
         self.mouse = MouseInterface()
         self.keyboard = KeyboardInterface()
-        self.active_events = []  # list of active KeyboardEvent objects
-        self.idle_events = []    # list of idle KeyboardEvent objects for reuse
+        # A fixed pool of events.  Events are marked active rather than moved
+        # between lists, since list append/pop/remove can reallocate.
+        self.events = tuple(KeyboardEvent() for _ in range(NUM_EVENTS))
+        self.event_seq = 0
         self.current_event = None  # the current event being processed
-        # self.send_keys = bytearray(10)  # pre-allocated array for sending keys
-        self.send_keys = array.array('b', [0] * 10)
-        # self.send_keys = [0 for _ in range(10)]
+        # Each event can send a key and a modifier.
         # hid send_keys can pass up to six regular keys,
         # and puts shift ctrl alt gui in the modifyer byte,
         # but we pass them as regular keys.
+        self.send_keys = array.array('b', [0] * (2 * NUM_EVENTS))
+        # send_keys reads every item it's given, so it gets a view of just the
+        # used ones.  Slicing a memoryview allocates, so make them all now.
+        send_keys_mv = memoryview(self.send_keys)
+        self.send_keys_views = tuple(send_keys_mv[:n]
+                                     for n in range(len(self.send_keys) + 1))
 
     def clear_deltas(self):
         '''After each tick, we clear these values.'''
@@ -105,30 +121,28 @@ class InputState:
         self.mouse_enable = 0
 
     def ensure_current_event(self):
-        '''Make sure we have an event object to work on.'''
+        '''Make sure we have an event object to work on.  Returns False if
+        all events are in use.'''
         if self.current_event is None:
-            self.current_event = self.idle_events.pop()  # get an idle event
+            for event in self.events:
+                if not event.active:
+                    self.current_event = event
+                    break
+        return self.current_event is not None
 
     def queue_current_event(self):
-        '''Adds the current event to the active list and clears it.'''
-        self.active_events.append(self.current_event)
+        '''Marks the current event active and clears it.'''
+        event = self.current_event
+        event.active = True
+        self.event_seq += 1
+        event.seq = self.event_seq
         self.current_event = None
 
     def recycle_event(self, event):
         '''Recycles an event back to the idle pool.'''
         event.cleanup()
-        if self.current_event == event:
+        if self.current_event is event:
             self.current_event = None
-        if event in self.active_events:
-            self.active_events.remove(event)
-        self.idle_events.append(event)
-
-    def get_active_layer(self):
-        '''Returns the active layer of the top event, or 0 if no events.'''
-        last_active_event = self.active_events[-1] if self.active_events else None
-        if last_active_event is None:
-            return 0
-        return last_active_event.active_layer
 
 
 def tick(input_state):
@@ -145,29 +159,37 @@ def tick(input_state):
     # print("Mouse enabled:", input_state.mouse_enable)
     if input_state.mouse_enable and \
             (input_state.mouse_x or input_state.mouse_y):
-        mdx, mdy = scale_mouse_movement(input_state.mouse_x, input_state.mouse_y)
-        mouse.move_by(mdx, mdy)
+        scale_mouse_movement(input_state)
+        mouse.move_by(input_state.mouse_x, input_state.mouse_y)
 
-    input_state.ensure_current_event()
+    # The newest active event that sets a layer wins.
     current_layer = 0
-    for event in input_state.active_events:
-        if event.set_layer is not None:
+    layer_seq = 0
+    for event in input_state.events:
+        if event.active and event.set_layer is not None and event.seq > layer_seq:
             current_layer = event.set_layer
-
-    current_event = input_state.current_event
+            layer_seq = event.seq
 
     # remove buttons that are part of an active event
     buttons = input_state.buttons
-    for event in input_state.active_events:
-        buttons &= ~event.buttons
+    for event in input_state.events:
+        if event.active:
+            buttons &= ~event.buttons
     # print(input_state.buttons, '->', buttons)
 
     # recycle completed events back to the idle pool
-    for event in input_state.active_events:
-        if not (event.buttons & input_state.buttons):
-            print("Recycling event:", event.action)
-            mem_info()
+    for event in input_state.events:
+        if event.active and not (event.buttons & input_state.buttons):
+            if DEBUG_PRINT:
+                print("Recycling event:", event.action)
+                mem_info()
             input_state.recycle_event(event)
+
+    if not input_state.ensure_current_event():
+        # Every event is in use, so new presses wait until one is released.
+        send_keys(input_state, keeb)
+        return
+    current_event = input_state.current_event
 
     ########
     # New event block
@@ -175,18 +197,19 @@ def tick(input_state):
 
 
     current_time = ticks_us()
-    foo = LOOKUP[current_layer].get(current_event.buttons, (None, None, None, None, None, 0, 0))
     tap_action, hold_action, in_chord, \
         tap_oneshot, hold_oneshot, \
-        tap_modifier, hold_modifier = foo
+        tap_modifier, hold_modifier = LOOKUP[current_layer].get(current_event.buttons, _NO_ACTION)
     hold_reqd = hold_action is not None or in_chord
     any_pressed = current_event.buttons != 0
 
     if current_event.start_time is not None:
-        held_time = current_time - current_event.start_time
+        held_time = ticks_diff(current_time, current_event.start_time)
         current_event.is_held = held_time > KEYMAP.HOLD_TIME_US
 
-    new_pressed, new_released = current_event.compare_buttons(buttons)
+    # any new buttons pressed / any of the event's buttons released
+    new_pressed = (current_event.buttons & buttons) != buttons
+    new_released = (current_event.buttons & buttons) != current_event.buttons
 
     if not buttons and not current_event.buttons:
         pass
@@ -194,7 +217,8 @@ def tick(input_state):
     # Starting event
     elif buttons and not current_event.buttons:
         current_event.buttons = buttons
-        print("Event starting:", current_event.buttons, current_event.modifier, 'Layer:', current_layer)
+        if DEBUG_PRINT:
+            print("Event starting:", current_event.buttons, current_event.modifier, 'Layer:', current_layer)
         current_event.start_time = current_time
 
     elif new_pressed:  # and buttons and current_event.buttons
@@ -216,8 +240,9 @@ def tick(input_state):
 
     if process_current_event:
         # Check what actions the current event maps to:
-        print("Tap Action/Mod:", tap_action, tap_modifier)
-        print("Hold Action/Mod, in_chord:", hold_action, hold_modifier, in_chord)
+        if DEBUG_PRINT:
+            print("Tap Action/Mod:", tap_action, tap_modifier)
+            print("Hold Action/Mod, in_chord:", hold_action, hold_modifier, in_chord)
         if current_event.is_held and hold_reqd:  # Hold
             action = hold_action
             oneshot = hold_oneshot
@@ -230,17 +255,26 @@ def tick(input_state):
         current_event.oneshot = oneshot
         current_event.modifier = modifier
 
-        if isinstance(action, str) and action.startswith('L'):
-            current_event.set_layer = int(action[1:])
+        # Check if the event is a layer shift:
+        layer = LAYER_NUMS.get(action)
+        if layer is not None:
+            current_event.set_layer = layer
         else:
             current_event.action = action
 
-
         input_state.queue_current_event()  # move to active list
-        print("Event queued:", current_event.action)
+        if DEBUG_PRINT:
+            print("Event queued:", current_event.action)
 
+    send_keys(input_state, keeb)
+
+
+def send_keys(input_state, keeb):
+    '''Sends the keys and modifiers of all active events.'''
     send_keys_num = 0
-    for event in input_state.active_events:
+    for event in input_state.events:
+        if not event.active:
+            continue
         # if event.action in KeyCode:
         if isinstance(event.action, int):
             input_state.send_keys[send_keys_num] = event.action
@@ -249,19 +283,12 @@ def tick(input_state):
             # print("sent modifier:", event.modifier)
             input_state.send_keys[send_keys_num] = event.modifier
             send_keys_num += 1
-    for n in range(send_keys_num, len(input_state.send_keys)):
-        input_state.send_keys[n] = 0
 
     # Send keys to the hid keyboard interface
-    # print("Send keys:", input_state.send_keys, 'Num active events:', len(input_state.active_events))
-    send_keys_view = memoryview(input_state.send_keys)[:send_keys_num]
-    # send_keys_view = input_state.send_keys[:send_keys_num]
+    send_keys_view = input_state.send_keys_views[send_keys_num]
     result = keeb.send_keys(send_keys_view, timeout_ms=100)
-    # print(list(send_keys_ view), result)
-    # result = keeb.send_keys(input_state.send_keys[:send_keys_num], timeout_ms=100)
-    if not result:
+    if not result and DEBUG_PRINT:
         print("Failed to send keys:", input_state.send_keys[:send_keys_num])
-    # print("Send keys result:", result)
 
 
 def main():
@@ -284,9 +311,13 @@ def main():
     INPUTS = new
     print("  * State total keys:", state_num_keys)
 
-    print("Allocating events...")
-    events = [KeyboardEvent() for _ in range(9)]
-    input_state.idle_events += events
+    # Map layer actions to layer numbers so the tick doesn't parse strings.
+    for layer_lookup in LOOKUP.values():
+        for entry in layer_lookup.values():
+            for action in (entry[0], entry[1]):
+                if isinstance(action, str) and action.startswith('L'):
+                    LAYER_NUMS[action] = int(action[1:])
+    print("  * Layer actions:", LAYER_NUMS)
 
     # Enable usb mouse
     print("Initializing USB mouse and keyboard...")
@@ -322,15 +353,17 @@ def main():
     gc.collect()
     next_t = ticks_us()
     next_debug_t = next_t
-    tick_count = 0
-    tick_rem_avg = 0
+    # Time left over after each tick, in us.  Integer math, since floats
+    # allocate.  A negative min means a tick overran its period.
+    slack_avg = 0
+    slack_min = PERIOD_US
     while True:
         if ticks_diff(next_debug_t, ticks_us()) <= 0:
             next_debug_t = ticks_add(ticks_us(), DEBUG_INTERVAL)
-            print("Ticks Avg:", tick_rem_avg)
+            print("Tick slack avg/min (us):", slack_avg, slack_min)
+            slack_min = PERIOD_US
             print("Debug info:")
-            print("  * Active events:", len(input_state.active_events))
-            print("  * Idle events:", len(input_state.idle_events))
+            print("  * Active events:", sum(1 for e in input_state.events if e.active))
             print("  * Current event:", input_state.current_event)
             print("  * Buttons:", input_state.buttons)
             print("  * Mouse enable:", input_state.mouse_enable)
@@ -338,11 +371,19 @@ def main():
             print("  * Wheel:", input_state.wheel)
             print()
             mem_info()
-        tick(input_state)
+        if HEAP_LOCK_TICK:
+            heap_lock()
+            try:
+                tick(input_state)
+            finally:
+                heap_unlock()
+        else:
+            tick(input_state)
         next_t = ticks_add(next_t, PERIOD_US)
-        diff_t = (next_t - ticks_us()) / 1000
-        tick_rem_avg = (diff_t + tick_count*tick_rem_avg) / (tick_count + 1)
-        tick_count += 1
+        slack = ticks_diff(next_t, ticks_us())
+        slack_avg += (slack - slack_avg) >> 4
+        if slack < slack_min:
+            slack_min = slack
         while ticks_diff(next_t, ticks_us()) > 0:
             pass
 
