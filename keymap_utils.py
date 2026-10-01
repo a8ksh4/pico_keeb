@@ -28,7 +28,7 @@ _ALIASES = {'0': 'N0', '1': 'N1', '2': 'N2', '3': 'N3', '4': 'N4',
             '&': 'LEFT_SHIFT:N7', '*': 'LEFT_SHIFT:N8', '(': 'LEFT_SHIFT:N9',
             ')': 'LEFT_SHIFT:N0',
             '{': 'LEFT_SHIFT:OPEN_BRACKET', '}': 'LEFT_SHIFT:CLOSE_BRACKET',
-            '?': 'LEFT_SHIFT:/SLASH', 'GUI': 'LEFT_UI'
+            '?': 'LEFT_SHIFT:SLASH', 'GUI': 'LEFT_UI'
             }
 
 def update_aliases(aliases):
@@ -57,11 +57,14 @@ def get_lookup_table(chords, keymap, layout, aliases, game_layer):
                         <oneshot_tap>, <oneshot_hold>, 
                         <tap_modifiers>, <hold_modifiers>)
     '''
-    chords_keys = get_chording_keys(chords)
+    if len(chords) > len(keymap):
+        raise ValueError(f"_CHORDS has {len(chords)} layers, but _KEYMAP only has {len(keymap)}")
     lookup = {}
     print("Building lookup table...")
     for layer_num, keys in enumerate(keymap):
         print(f"Layer {layer_num}: {keys}")
+        layer_chords = chords[layer_num] if layer_num < len(chords) else ()
+        chords_keys = get_chording_keys(layer_chords)
         lookup[layer_num] = {}
         for key_num, key in enumerate(keys):
             pin_num = layout[key_num]
@@ -85,7 +88,7 @@ def get_lookup_table(chords, keymap, layout, aliases, game_layer):
                                            tap_modifier, hold_modifier)
 
         # add items to the lookup dict for this layer directly for each chord
-        add_chording_keys(chords, keys, layout, lookup[layer_num])
+        add_chording_keys(layer_num, layer_chords, keys, layout, lookup[layer_num])
         add_partial_chords(lookup[layer_num])
     return lookup
 
@@ -114,43 +117,37 @@ def _combinations(list_of_lists, origin=False):
     return out
 
 
-def add_chording_keys(chords, layer_keymap, layout, layer_lookup):
-    '''For one layer, get the input bytecode associated with
-    each chord in a dict that will be returned and merged with the direct
-    key lookup dict for that layer.'''
-    
-    # Chords are all the "hold" values.
-    for result, chord_keys in chords.items():
-        hold_action, hold_modifier = _lookup(result)  # Handle alias or whatever.
-        # chord_byte = 0
+def add_chording_keys(layer_num, layer_chords, layer_keymap, layout, layer_lookup):
+    '''Adds an entry to one layer's lookup dict for each of that layer's
+    chords.  A key name that's on the keyboard more than once (e.g. on both
+    sides) gives the chord every combination of those positions.
+    Raises ValueError for mistakes in the chords, rather than silently
+    dropping a chord.'''
+    chord_names = {}  # chord_byte -> chord, to report conflicts
+    for result, chord_keys in layer_chords:
+        action, modifier = _lookup(result)  # Handle alias or whatever.
+        if action is None:
+            raise ValueError(f"Layer {layer_num} chord {chord_keys}: output {result!r} isn't a KeyCode or alias")
         pin_byte_sets = []
         for ck in chord_keys:
-            if ck not in layer_keymap:
-                # chord doesn't work on this layer
-                break
-            # keymap_num = layer_keymap.index(ck)
-            keymap_nums = [n for n, k in enumerate(layer_keymap) if k == ck]
-            # pin_num = layout[keymap_num]
-            pin_nums = [layout[kn] for kn in keymap_nums]
-            # pin_byte = 1 << pin_num
-            pin_bytes = [1 << pn for pn in pin_nums]
-            # chord_byte |= pin_byte
+            pin_bytes = [1 << layout[n] for n, k in enumerate(layer_keymap) if k == ck]
+            if not pin_bytes:
+                raise ValueError(f"Layer {layer_num} chord {result!r}: key {ck!r} isn't in that layer of _KEYMAP")
             pin_byte_sets.append(pin_bytes)
-        else:
-            # chord works on this layer, so lets add it
-            pin_byte_combs = _combinations(pin_byte_sets, True)
-            for comb in pin_byte_combs:
-                chord_byte = 0
-                for key_byte in comb:
-                    chord_byte |= key_byte
-                
-                assert(chord_byte not in layer_lookup)
-                print('Chord', result, chord_keys, chord_byte, hold_action, hold_modifier)
-                # The chord result is its tap action, so pressing and
-                # releasing the chord sends it.
-                layer_lookup[chord_byte] = (hold_action, None, True,
-                                            False, False,
-                                            hold_modifier, 0)
+
+        for comb in _combinations(pin_byte_sets, True):
+            chord_byte = 0
+            for key_byte in comb:
+                chord_byte |= key_byte
+            if chord_byte in chord_names:
+                raise ValueError(f"Layer {layer_num}: chords {chord_names[chord_byte]} and {(result, chord_keys)} use the same keys")
+            chord_names[chord_byte] = (result, chord_keys)
+            print('Chord', result, chord_keys, chord_byte, action, modifier)
+            # The chord result is its tap action, so pressing and
+            # releasing the chord sends it.
+            layer_lookup[chord_byte] = (action, None, True,
+                                        False, False,
+                                        modifier, 0)
 
 
 # Entry for a combination of keys that isn't a chord, but is part of one, so
@@ -174,12 +171,12 @@ def add_partial_chords(layer_lookup):
             sub = (sub - 1) & chord_byte
 
 
-def get_chording_keys(chords):
-    '''Returns a set of keys used in any chord so that we know to
+def get_chording_keys(layer_chords):
+    '''Returns a set of keys used in any chord in a layer so that we know to
     wait for hold timeout on actions using these keys even if there
     isn't an associated hold action (tap only)'''
     out = set()
-    for keys in chords.values():
+    for _, keys in layer_chords:
         out.update(keys)
     return out
 

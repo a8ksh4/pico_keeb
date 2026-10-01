@@ -30,63 +30,72 @@ HOLD_TIME_MS = 200  # how long to wait for a hold tap to become a hold
 HOLD_TIME_US = 1000 * HOLD_TIME_MS
 _GAME_LAYER = 5
 
+# Chords per layer, in the same order as _KEYMAP.  Each chord is
+# (output, (keys...)), where the keys are names from that layer of _KEYMAP and
+# can be on either side.  Outputs can repeat, so more than one chord can do
+# the same thing.  Layers past the end of this have no chords.
 # Don't use Aliases in chords (?)
-_CHORDS = {
-    # A
-    'B': ('E', 'O'),
-    'C': ('E', 'Y'),
-    'D': ('A', 'R', 'T'),
-    # E
-    'F': ('A', 'R'),
-    'G': ('R', 'T'),
-    'H': ('E', 'I'),
-    # I
-    'J': ('T', 'S'),
-    'K': ('Y', 'O'),
-    'L': ('E', 'Y', 'I'),
-    'M': ('Y', 'I', 'O'),
-    'N': ('I', 'O'),
-    # O
-    'P': ('E', 'I', 'O'),
-    'Q': ('A', 'T', 'S'),
-    # R
-    # S
-    # T
-    'U': ('Y', 'I'),
-    'V': ('R', 'S'),
-    'W': ('A', 'S'),
-    'X': ('R', 'T', 'S'),
-    # Y
-    'Z': ('A', 'R', 'T', 'S'),
-    ',': ('A', 'Y'),
-    '.': ('A', 'I'),
-    '/': ('A', 'O'),
-    "'": ('R', 'Y'),
-    '!': ('T', 'I'),
-    '?': ('S', 'O'),
-    ' ': ('E', 'Y', 'I', 'O'),
-    'BKSP': ('R', 'E'),
-    'DEL': ('R', 'I'),
-    'ENTR': ('A', 'E'),
-    'ESC': ('A', 'R', 'O'),
-    'TAB': ('A', 'R', 'T', 'O'),
-    'CTRL': ('S', 'E'),
-    'GUI': ('S', 'Y'),
-    'ALT': ('S', 'I'),
-    'SHFT': ('A', 'Y', 'I', 'O'),
-
-    # NUMBER Layer:
-    ' ': ('5', '6', '7', '8'),
-    'BKSP': ('2', '5'),
-    'DEL': ('2', '7'),
-    'ENTR': ('1', '5'),
-    'ESC': ('1', '2', '8'),
-    'TAB': ('1', '2', '3', '8'),
-
-    # SYMBOL Layer:
-    ' ': ('%', '^', '&', '*'),
-    'BKSP': ('@', '%')
-}
+_CHORDS = (
+    # 0 - Base Layer
+    [
+        # A
+        ('B', ('E', 'O')),
+        ('C', ('E', 'Y')),
+        ('D', ('A', 'R', 'T')),
+        # E
+        ('F', ('A', 'R')),
+        ('G', ('R', 'T')),
+        ('H', ('E', 'I')),
+        # I
+        ('J', ('T', 'S')),
+        ('K', ('Y', 'O')),
+        ('L', ('E', 'Y', 'I')),
+        ('M', ('Y', 'I', 'O')),
+        ('N', ('I', 'O')),
+        # O
+        ('P', ('E', 'I', 'O')),
+        ('Q', ('A', 'T', 'S')),
+        # R
+        # S
+        # T
+        ('U', ('Y', 'I')),
+        ('V', ('R', 'S')),
+        ('W', ('A', 'S')),
+        ('X', ('R', 'T', 'S')),
+        # Y
+        ('Z', ('A', 'R', 'T', 'S')),
+        (',', ('A', 'Y')),
+        ('.', ('A', 'I')),
+        ('/', ('A', 'O')),
+        ("'", ('R', 'Y')),
+        ('!', ('T', 'I')),
+        ('?', ('S', 'O')),
+        ('SPACE', ('E', 'Y', 'I', 'O')),
+        ('BACKSPACE', ('R', 'E')),
+        ('DEL', ('R', 'I')),
+        ('ENTR', ('A', 'E')),
+        ('ESC', ('A', 'R', 'O')),
+        ('TAB', ('A', 'R', 'T', 'O')),
+        ('CTRL', ('S', 'E')),
+        ('GUI', ('S', 'Y')),
+        ('ALT', ('S', 'I')),
+        ('SHFT', ('A', 'Y', 'I', 'O')),
+    ],
+    # 1 - Numbers Layer
+    [
+        (' ', ('5', '6', '7', '8')),
+        ('BKSP', ('2', '5')),
+        ('DEL', ('2', '7')),
+        ('ENTR', ('1', '5')),
+        ('ESC', ('1', '2', '8')),
+        ('TAB', ('1', '2', '3', '8')),
+    ],
+    # 2 - Symbols Layer
+    [
+        (' ', ('%', '^', '&', '*')),
+        ('BKSP', ('@', '%')),
+    ],
+)
 
 
 _KEYMAP = (

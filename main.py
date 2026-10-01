@@ -41,7 +41,7 @@ PERIOD_US = PERIOD_MS * 1000
 
 # PERIOD_US = 1_000_000  # 1 Hz
 DEBUG_INTERVAL = 30_000_000  # 30 seconds
-DEBUG_PRINT = False
+DEBUG_PRINT = True
 # Lock the heap around each tick, so anything that allocates raises a
 # MemoryError at the offending line.  For development only: it crashes the
 # keyboard on the first allocation, and must be off when DEBUG_PRINT is on.

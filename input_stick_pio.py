@@ -239,9 +239,9 @@ class InputModule(InputModule):
             # Slowly track drift (temperature, etc) while untouched.
             self._cap_base += ((value << 8) - self._cap_base) >> 8
 
-        if self.debug_print:
-            self.print("cap value", value, "baseline", base,
-                       "touched", self.LAST_TOUCH_STATE)
+        # if self.debug_print:
+        #     self.print("cap value", value, "baseline", base,
+        #                "touched", self.LAST_TOUCH_STATE)
 
     def update_state(self):
         '''update_state is a standard function in input modules.
