@@ -1,6 +1,8 @@
 '''Analog stick with click and capacitive touch sensing.  You could
 comment out the touch stuff if your stick doesn't have it.'''
 
+import random
+
 from input import InputModule
 from machine import ADC, Pin, freq
 import rp2
@@ -89,8 +91,9 @@ class InputModule(InputModule):
 
     def get_num_keys(self):
         '''Tells the main program how many keys this module handles
-        so the main program knows how much memory to allocate for it.'''
-        return 1
+        so the main program knows how much memory to allocate for it.
+        Key 0 is the stick click, key 1 is the capacitive touch.'''
+        return 2
 
     def init(self, keys_bits_offset, pio_machine_num):
         '''Init is a standard function for pico_keeb input modules that 
@@ -239,9 +242,10 @@ class InputModule(InputModule):
             # Slowly track drift (temperature, etc) while untouched.
             self._cap_base += ((value << 8) - self._cap_base) >> 8
 
-        # if self.debug_print:
-        #     self.print("cap value", value, "baseline", base,
-        #                "touched", self.LAST_TOUCH_STATE)
+        if self.debug_print:
+            if random.randint(0,1000) < 5:
+                self.print("cap value", value, "baseline", base,
+                       "touched", self.LAST_TOUCH_STATE)
 
     def update_state(self):
         '''update_state is a standard function in input modules.
@@ -261,6 +265,8 @@ class InputModule(InputModule):
         value = 1 if clicked else 0
         # self.state.keys = (self.state.keys & ~(1 << self.KEYS_OFFSET)) | (value << self.KEYS_OFFSET)
         self.set_key_state(0, value)  # use the base class method to set the key state
+        # Touch is a key too, so the keymap can give it an action, like a layer.
+        self.set_key_state(1, 1 if touched else 0)
 
 
 if __name__ == "__main__":

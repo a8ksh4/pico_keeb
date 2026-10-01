@@ -12,16 +12,19 @@ i j k l   m n o p - nearest finger row
   q r u   v s t   - thumbs buttons around joystick/wheel clickers
 '''
     
-# Map pin numbers to physical key locations
-_LAYOUT = bytes((12, 13, 14, 15,    10,  9,  8,  7,
-                 17, 18, 19, 20,     5,  4,  3,  2,
-                     21, 16,  1,     0, 11,  6))
+# Map pin numbers to physical key locations.  Key numbers follow the input
+# modules in main.INPUTS: 0 encoder click, 1 stick click, 2 stick touch, then
+# the matrix from 3.
+_LAYOUT = bytes((13, 14, 15, 16,    11, 10,  9,  8,
+                 18, 19, 20, 21,     6,  5,  4,  3,
+                     22, 17,  1,     0, 12,  7,
+                 2))
 
 # Special key combinations outside keymap.
 # exit_keys will halt micropython script and return to repl
-EXIT_KEYS = bytes((12, 13, 14, 15, 10, 9, 8, 7))
+EXIT_KEYS = bytes((13, 14, 15, 16, 11, 10, 9, 8))
 # shutdown_keys will signal the device to power down.
-SHUTDOWN_KEYS = bytes((12, 13, 14, 15, 17, 18, 19, 20))
+SHUTDOWN_KEYS = bytes((13, 14, 15, 16, 18, 19, 20, 21))
 
 HOLD_TIME_MS = 200  # how long to wait for a hold tap to become a hold
                     # and how long to wait for chords to be completed.
@@ -31,10 +34,10 @@ HOLD_TIME_US = 1000 * HOLD_TIME_MS
 _GAME_LAYER = 5
 
 # Chords per layer, in the same order as _KEYMAP.  Each chord is
-# (output, (keys...)), where the keys are names from that layer of _KEYMAP and
+# (output, (keys...)), where the output is any keymap entry and the keys are
+# entries from that layer of _KEYMAP, written exactly as they are there.  Keys
 # can be on either side.  Outputs can repeat, so more than one chord can do
 # the same thing.  Layers past the end of this have no chords.
-# Don't use Aliases in chords (?)
 _CHORDS = (
     # 0 - Base Layer
     [
@@ -70,31 +73,47 @@ _CHORDS = (
         ("'", ('R', 'Y')),
         ('!', ('T', 'I')),
         ('?', ('S', 'O')),
-        ('SPACE', ('E', 'Y', 'I', 'O')),
-        ('BACKSPACE', ('R', 'E')),
+        ('SPC', ('E', 'Y', 'I', 'O')),
+        ('BSPC', ('R', 'E')),
         ('DEL', ('R', 'I')),
-        ('ENTR', ('A', 'E')),
+        ('ENT', ('A', 'E')),
         ('ESC', ('A', 'R', 'O')),
         ('TAB', ('A', 'R', 'T', 'O')),
-        ('CTRL', ('S', 'E')),
-        ('GUI', ('S', 'Y')),
-        ('ALT', ('S', 'I')),
-        ('SHFT', ('A', 'Y', 'I', 'O')),
+        ('LCTL', ('S', 'E')),
+        ('LGUI', ('S', 'Y')),
+        ('LALT', ('S', 'I')),
+        ('LSFT', ('A', 'Y', 'I', 'O')),
+        ('DF(4)', ('E', 'R', 'I')),
     ],
     # 1 - Numbers Layer
     [
-        (' ', ('5', '6', '7', '8')),
-        ('BKSP', ('2', '5')),
+        ('9', ('1', '2')),
+        ('0', ('2', '3')),
+        ('SPC', ('5', '6', '7', '8')),
+        ('BSPC', ('2', '5')),
         ('DEL', ('2', '7')),
-        ('ENTR', ('1', '5')),
+        ('ENT', ('1', '5')),
         ('ESC', ('1', '2', '8')),
         ('TAB', ('1', '2', '3', '8')),
     ],
     # 2 - Symbols Layer
     [
-        (' ', ('%', '^', '&', '*')),
-        ('BKSP', ('@', '%')),
+        ('SPC', ('%', '^', '&', '*')),
+        ('BSPC', ('@', '%')),
     ],
+    # 3 - Meta Layer
+    [
+
+    ],
+    # 4 - Navigation Layer
+    [
+        ('BSPC', ('UP', 'RIGHT')),
+        ('DEL', ('LEFT', 'UP')),
+        ('ENT', ('END', 'RIGHT')),
+        ('ESC', ('PGDN', 'UP', 'END')),
+        ('TAB', ('PGDN', 'HOME', 'UP', 'END')),
+        ('DF(0)', ('LEFT', 'UP', 'RIGHT')),
+    ]
 )
 
 
@@ -102,34 +121,47 @@ _KEYMAP = (
     # 0 - Base Layer
     ('S',   'T',   'R',   'A',      'A',   'R',   'T',   'S',
      'O',   'I',   'Y',   'E',      'E',   'Y',   'I',   'O',
-          'CTRL', 'SHFT',   '',       '',  'L2', 'L1',),
+          'LCTL', 'LSFT', 'DF(5)',  'MS_BTN2',  'MO(1)', 'MO(2)',
+     # stick touch
+     'MO(4)'),
     # 1 - Numbers Layer
     ('4',   '3',   '2',   '1',      '1',   '2',   '3',   '4',
      '8',   '7',   '6',   '5',      '5',   '6',   '7',   '8',
-             '',    '',    '',       '',    '',    ''),
+             '',    '',    '',       '',    '',    '',
+     # stick touch
+     ''),
     # 2 - Symbols Layer
     ('$',   '#',   '@',   '!',      '!',   '@',   '#',   '$',
      '*',   '&',   '^',   '%',      '%',   '^',   '&',   '*',
-             '',    '',    '',       '',    '',    ''),
-#     # 3 - Meta Layer
-#     ('', '',   '',   '',      '',   '',   '',   '',
-#      '', '',   '',   '',      '',   '',   '',   '',
-#              '',    '',    '',       '',    '',    ''),
-#     # 4 - Navigation Layer
-#     ('', '',   '',   '',      '',   '',   '',   '',
-#      '', '',   '',   '',      '',   '',   '',   '',
-#              '',    '',    '',       '',    '',    ''),
-#     # 5 - Game Layer has no chords or fancy stuff for fast response
-#     ('', '',   '',   '',      '',   '',   '',   '',
-#      '', '',   '',   '',      '',   '',   '',   '',
-#              '',    '',    '',       '',    '',    ''),
+             '',    '',    '',       '',    '',    '',
+     # stick touch
+     ''),
+    # 3 - Meta Layer
+    ('', '',   '',   '',      '',   '',   '',   '',
+     '', '',   '',   '',      '',   '',   '',   '',
+             '',    '',    '',       '',    '',    '',
+     # stick touch
+     ''),
+    # 4 - Navigation Layer
+    ('PGUP', 'HOME',   'UP',   'END',      'MS_BTN1',  'MS_UP',   'MS_BTN2',   'MS_WHLU',
+     'PGDN', 'LEFT', 'DOWN', 'RIGHT',      'MS_LEFT',  'MS_DOWN', 'MS_RGHT',   'MS_WHLD',
+             '',    '',    'DF(5)',             'MS_BTN3',  'MS_BTN1', 'MS_BTN2',
+     # stick touch
+     ''),
+    # 5 - Game Layer has no chords or fancy stuff for fast response
+    ('', '',   'UP',   '',      '',   '',   '',   '',
+     '', 'LEFT','DOWN', 'RIGHT',      '',   '',   '',   '',
+         '',    '',  'DF(0)', '',    '',    '',
+     # stick touch
+     ''),
 )
 
-# Check _ALIASES to see what already exists in the keymap_utils 
-# file.  Add any more here that you like.  These must match what's
-# in the usb.device.keyboard.KeyCodes object:
-# https://github.com/micropython/micropython-lib/blob/master/micropython/usb/usb-device-keyboard/usb/device/keyboard.py
-_MY_ALIASES = {'RSHFT': 'RIGHT_SHIFT', }
+# Keymap entries use QMK names (https://docs.qmk.fm/keycodes_basic) and
+# functions like MO(1), DF(4), LT(1, MS_BTN1) and LSFT(8).  See the top of
+# keymap_utils.py for what's supported, and _ALIASES there for the single
+# character shortcuts.  Add your own names for entries here, e.g.
+# {'NAV': 'DF(4)'}
+_MY_ALIASES = {}
 
 
 ################################

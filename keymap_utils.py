@@ -4,39 +4,155 @@ in the example keymap.'''
 
 from array import array
 from usb.device.keyboard import KeyCode
-# This pulls in all of the keys we can use:
 
-# And some aliases that are shorter:
-# The key is what you want, and each value must exist in the
-# KeyCode object: https://github.com/micropython/micropython-lib/blob/master/micropython/usb/usb-device-keyboard/usb/device/keyboard.py
-_ALIASES = {'0': 'N0', '1': 'N1', '2': 'N2', '3': 'N3', '4': 'N4',
-            '5': 'N5', '6': 'N6', '7': 'N7', '8': 'N8', '9': 'N9',
-            'ENTR': 'ENTER', 'ESC': 'ESCAPE', 'BKSP': 'BACKSPACE',
-            ' ': "SPACE", '-': 'MINUS', '=': 'EQUAL', '[': 'OPEN_BRACKET',
-            ']': 'CLOSE_BRACKET', '\\': 'BACKSLASH', #  '#': 'HASH', not on US layout
-            ';': 'SEMICOLON', "'": 'QUOTE', '`': 'GRAVE', ',': 'COMMA', 
-            '.': 'DOT', '/': 'SLASH', 'CAPS': 'CAPS_LOCK',
-            'PTSC': 'PRINT_SCREEN', 'SCRL': 'SCROLL_LOCK', 'PAUS': 'PAUSE',
-            'INS': 'INSERT', 'PGUP': 'PAGEUP', 'DEL': 'DELETE',
-            'PGDN': 'PAGEDOWN', 'RGHT': 'RIGHT', 
-            'CTRL': 'LEFT_CTRL', 'SHFT': 'LEFT_SHIFT', 'ALT': 'LEFT_ALT',
-            'UI': 'LEFT_UI', 'RCTRL': 'RIGHT_CTRL', 'RSHFT': 'RIGHT_SHIFT',
-            'RALT': 'RIGHT_ALT', 'RUI': 'RIGHT_UI', 
+# Keymap entries use QMK names, without the KC_ prefix (it's allowed, though):
+# https://docs.qmk.fm/keycodes_basic
+#   Basic keys:      'A', '1', 'ENT', 'BSPC', 'LSFT', ...
+#   Momentary layer: 'MO(1)'                active while held
+#   Default layer:   'DF(4)'                switches the base layer
+#   Layer tap:       'LT(1, MS_BTN1)'       MO(1) when held, MS_BTN1 on tap
+#   Mod tap:         'MT(LSFT, A)'          LSFT when held, A on tap
+#   Modified key:    'LSFT(8)' or 'S(8)'    shift + 8, also C(), A(), G()
+#   Mouse keys:      'MS_BTN1'..'MS_BTN3', 'MS_UP', 'MS_DOWN', 'MS_LEFT',
+#                    'MS_RGHT'
+# Single character shortcuts like '*' or '?' work too (see _ALIASES).
 
-            '!': 'LEFT_SHIFT:N1', '@': 'LEFT_SHIFT:N2', '#': 'LEFT_SHIFT:N3',
-            '$': 'LEFT_SHIFT:N4', '%': 'LEFT_SHIFT:N5', '^': 'LEFT_SHIFT:N6',
-            '&': 'LEFT_SHIFT:N7', '*': 'LEFT_SHIFT:N8', '(': 'LEFT_SHIFT:N9',
-            ')': 'LEFT_SHIFT:N0',
-            '{': 'LEFT_SHIFT:OPEN_BRACKET', '}': 'LEFT_SHIFT:CLOSE_BRACKET',
-            '?': 'LEFT_SHIFT:SLASH', 'GUI': 'LEFT_UI'
-            }
+# Special actions (not keyboard keys) are ints >= 0x100: the kind in the high
+# byte and an argument (layer, button, direction) in the low byte.  Keycodes
+# are 0..0xFF and modifiers are negative, as in usb.device.keyboard, so
+# main.py can tell them apart with `action & 0xFF00` without allocating.
+MO = 0x100       # momentary layer, arg = layer
+DF = 0x200       # set default layer, arg = layer
+MS_BTN = 0x300   # mouse button, arg = 0 left, 1 right, 2 middle
+MS_MOVE = 0x400  # mouse movement, arg = 0 up, 1 down, 2 left, 3 right
+
+_SPECIAL_NAMES = {
+    'MS_BTN1': MS_BTN | 0, 'MS_BTN2': MS_BTN | 1, 'MS_BTN3': MS_BTN | 2,
+    'MS_UP': MS_MOVE | 0, 'MS_DOWN': MS_MOVE | 1,
+    'MS_LEFT': MS_MOVE | 2, 'MS_RGHT': MS_MOVE | 3,
+}
+
+# QMK names that differ from the usb.device.keyboard KeyCode names.  Names
+# not listed here are looked up in KeyCode directly, e.g. 'A', 'TAB', 'HOME'.
+# https://github.com/micropython/micropython-lib/blob/master/micropython/usb/usb-device-keyboard/usb/device/keyboard.py
+_KEYCODE_NAMES = {
+    '1': 'N1', '2': 'N2', '3': 'N3', '4': 'N4', '5': 'N5',
+    '6': 'N6', '7': 'N7', '8': 'N8', '9': 'N9', '0': 'N0',
+    'ENT': 'ENTER', 'ESC': 'ESCAPE', 'BSPC': 'BACKSPACE', 'SPC': 'SPACE',
+    'MINS': 'MINUS', 'EQL': 'EQUAL', 'LBRC': 'OPEN_BRACKET',
+    'RBRC': 'CLOSE_BRACKET', 'BSLS': 'BACKSLASH', 'NUHS': 'HASH',
+    'SCLN': 'SEMICOLON', 'QUOT': 'QUOTE', 'GRV': 'GRAVE', 'COMM': 'COMMA',
+    'SLSH': 'SLASH', 'CAPS': 'CAPS_LOCK', 'PSCR': 'PRINTSCREEN',
+    'SCRL': 'SCROLL_LOCK', 'PAUS': 'PAUSE', 'INS': 'INSERT',
+    'PGUP': 'PAGEUP', 'DEL': 'DELETE', 'PGDN': 'PAGEDOWN', 'RGHT': 'RIGHT',
+    'NUM': 'KP_NUM_LOCK', 'PSLS': 'KP_DIVIDE', 'PAST': 'KP_MULTIPLY',
+    'PMNS': 'KP_MINUS', 'PPLS': 'KP_PLUS', 'PENT': 'KP_ENTER',
+    'P1': 'KP_1', 'P2': 'KP_2', 'P3': 'KP_3', 'P4': 'KP_4', 'P5': 'KP_5',
+    'P6': 'KP_6', 'P7': 'KP_7', 'P8': 'KP_8', 'P9': 'KP_9', 'P0': 'KP_0',
+    'LCTL': 'LEFT_CTRL', 'LSFT': 'LEFT_SHIFT', 'LALT': 'LEFT_ALT',
+    'LGUI': 'LEFT_UI', 'RCTL': 'RIGHT_CTRL', 'RSFT': 'RIGHT_SHIFT',
+    'RALT': 'RIGHT_ALT', 'RGUI': 'RIGHT_UI',
+}
+
+# Names that stand for another keymap entry: QMK's shifted key names, and
+# single character shortcuts.  The keymap can add more with update_aliases().
+_ALIASES = {
+    # QMK shifted keys
+    'TILD': 'S(GRV)', 'EXLM': 'S(1)', 'AT': 'S(2)', 'HASH': 'S(3)',
+    'DLR': 'S(4)', 'PERC': 'S(5)', 'CIRC': 'S(6)', 'AMPR': 'S(7)',
+    'ASTR': 'S(8)', 'LPRN': 'S(9)', 'RPRN': 'S(0)', 'UNDS': 'S(MINS)',
+    'PLUS': 'S(EQL)', 'LCBR': 'S(LBRC)', 'RCBR': 'S(RBRC)',
+    'PIPE': 'S(BSLS)', 'COLN': 'S(SCLN)', 'DQUO': 'S(QUOT)',
+    'LABK': 'S(COMM)', 'RABK': 'S(DOT)', 'QUES': 'S(SLSH)',
+    # Single characters
+    ' ': 'SPC', '-': 'MINS', '=': 'EQL', '[': 'LBRC', ']': 'RBRC',
+    '\\': 'BSLS', ';': 'SCLN', "'": 'QUOT', '`': 'GRV', ',': 'COMM',
+    '.': 'DOT', '/': 'SLSH',
+    '~': 'TILD', '!': 'EXLM', '@': 'AT', '#': 'HASH', '$': 'DLR',
+    '%': 'PERC', '^': 'CIRC', '&': 'AMPR', '*': 'ASTR', '(': 'LPRN',
+    ')': 'RPRN', '_': 'UNDS', '+': 'PLUS', '{': 'LCBR', '}': 'RCBR',
+    '|': 'PIPE', ':': 'COLN', '"': 'DQUO', '<': 'LABK', '>': 'RABK',
+    '?': 'QUES',
+}
+
+# Modifier functions like 'LSFT(8)', and QMK's one letter forms like 'S(8)'.
+_MOD_FUNCS = {'LSFT': 'LSFT', 'LCTL': 'LCTL', 'LALT': 'LALT', 'LGUI': 'LGUI',
+              'RSFT': 'RSFT', 'RCTL': 'RCTL', 'RALT': 'RALT', 'RGUI': 'RGUI',
+              'S': 'LSFT', 'C': 'LCTL', 'A': 'LALT', 'G': 'LGUI'}
+
 
 def update_aliases(aliases):
     '''Updates the global _ALIASES dictionary with new aliases.'''
-    # _ALIASES += aliases
     for alias, key in aliases.items():
         _ALIASES[alias] = key
     return _ALIASES
+
+
+def parse_key(name):
+    '''Parses a keymap entry, e.g. 'A', 'LSFT(8)' or 'LT(1, MS_BTN1)', into
+    (tap_action, tap_modifier, hold_action, hold_modifier).  An action is a
+    keycode, a negative modifier keycode, a special action (MO | layer, ...)
+    or None for nothing.  A modifier is 0 or negative, like modifier keycodes,
+    with several combined as -(bits | bits).'''
+    if name in _ALIASES:
+        return parse_key(_ALIASES[name])
+    name = name.strip()
+    if not name or name == 'NO':
+        return None, 0, None, 0
+    if name.startswith('KC_'):
+        return parse_key(name[3:])
+    if name.endswith(')') and '(' in name:
+        func, args = name[:-1].split('(', 1)
+        return _parse_function(name, func.strip(), _split_args(args))
+    if name in _SPECIAL_NAMES:
+        return _SPECIAL_NAMES[name], 0, None, 0
+    code = getattr(KeyCode, _KEYCODE_NAMES.get(name, name), None)
+    if code is None:
+        print(f"Unknown key name: {name!r}")
+    return code, 0, None, 0
+
+
+def _parse_function(name, func, args):
+    '''Parses a function entry like 'MO(1)', given its name and arguments.'''
+    def expect(n):
+        if len(args) != n:
+            raise ValueError(f"{name}: {func}() takes {n} argument(s)")
+
+    if func in ('MO', 'DF'):
+        expect(1)
+        return (MO if func == 'MO' else DF) | int(args[0]), 0, None, 0
+    if func == 'LT':
+        expect(2)
+        tap, tap_mod, _, _ = parse_key(args[1])
+        return tap, tap_mod, MO | int(args[0]), 0
+    if func == 'MT':
+        expect(2)
+        tap, tap_mod, _, _ = parse_key(args[1])
+        return tap, tap_mod, parse_key(args[0])[0], 0
+    if func in _MOD_FUNCS:
+        expect(1)
+        tap, tap_mod, hold, hold_mod = parse_key(args[0])
+        mod = parse_key(_MOD_FUNCS[func])[0]
+        return tap, -((-tap_mod) | (-mod)), hold, hold_mod
+    raise ValueError(f"{name}: unknown function {func!r}")
+
+
+def _split_args(args):
+    '''Splits function arguments on commas that aren't inside parentheses.
+    Inside a function, use names (COMM, LPRN) rather than ',' or '('.'''
+    out = []
+    depth = 0
+    start = 0
+    for i, ch in enumerate(args):
+        if ch == '(':
+            depth += 1
+        elif ch == ')':
+            depth -= 1
+        elif ch == ',' and depth == 0:
+            out.append(args[start:i].strip())
+            start = i + 1
+    out.append(args[start:].strip())
+    return out
 
 
 def get_lookup_table(chords, keymap, layout, aliases, game_layer):
@@ -68,18 +184,12 @@ def get_lookup_table(chords, keymap, layout, aliases, game_layer):
         lookup[layer_num] = {}
         for key_num, key in enumerate(keys):
             pin_num = layout[key_num]
-            assert isinstance(key, str), f"Key must be a string: {key}"
-            if '_()' in key:
-                hold, tap = key.split('_(')
-                assert(tap.endswith(')'), f"Invalid key format: {key}")
-                tap = tap[:-1]  # remove trailing ')'
-            else:
-                tap, hold = key, None
-            hold_action, hold_modifier = _lookup(hold)
-            tap_action, tap_modifier = _lookup(tap)
+            if not isinstance(key, str):
+                raise ValueError(f"Layer {layer_num}: key must be a string: {key!r}")
+            tap_action, tap_modifier, hold_action, hold_modifier = parse_key(key)
             # Keys that are part of a chord wait to see if the rest of it
             # gets pressed, so this checks the key name, not its keycode.
-            in_chord = tap in chords_keys
+            in_chord = key in chords_keys
             pin_byte = 1 << pin_num
             oneshot_tap = False
             oneshot_hold = False
@@ -125,7 +235,7 @@ def add_chording_keys(layer_num, layer_chords, layer_keymap, layout, layer_looku
     dropping a chord.'''
     chord_names = {}  # chord_byte -> chord, to report conflicts
     for result, chord_keys in layer_chords:
-        action, modifier = _lookup(result)  # Handle alias or whatever.
+        action, modifier, _, _ = parse_key(result)
         if action is None:
             raise ValueError(f"Layer {layer_num} chord {chord_keys}: output {result!r} isn't a KeyCode or alias")
         pin_byte_sets = []
@@ -192,26 +302,6 @@ def get_chording_keys(layer_chords):
 #     if code < 0:                                  # modifier
 #         return (_B_MOD << 11) | (-code)
 #     return code                                   # plain key, behavior 0
-
-def _lookup(name):
-    modifier = 0
-    if name is None:
-        return None, modifier
-    print('lookup1:', name)
-    if name in _ALIASES:
-        name = _ALIASES[name]
-    print('lookup2:', name)
-    if ':' in name:
-        mod, name = name.split(':')
-        mod = getattr(KeyCode, mod, 0)
-        assert(mod is not None)
-        modifier = mod
-        print('modifier:', modifier)
-    if name.startswith('L') and len(name) > 1 and name[1].isdigit():
-        return name, modifier  # layer shift, not a keycode
-    code = getattr(KeyCode, name, None)  # return None if not found
-    print('lookup3:', code)
-    return code, modifier
 
 # def get_actions(keymap):
 #     return tuple(array('H', (parse_keys(k) for k in layer)) for layer in keymap)

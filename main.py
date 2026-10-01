@@ -16,6 +16,8 @@ from input import MouseScaler
 
 import keymap_tallcan as KEYMAP
 LOOKUP = KEYMAP.LOOKUP
+# Kinds of special actions in the lookup table (see keymap_utils.py).
+from keymap_utils import MO, DF, MS_BTN, MS_MOVE
 
 # import pyb
 # pyb.usb_mode("VCP+HID", hid=pyb.hid_keyboard)
@@ -53,11 +55,9 @@ NUM_EVENTS = 9  # max simultaneous events (keys / chords held)
 # constant, so a new tuple isn't built for every lookup.
 _NO_ACTION = (None, None, None, None, None, 0, 0)
 
-# Layer actions ('L1', 'L2', ...) to layer numbers, filled in by main() so
-# the tick doesn't have to parse strings.
-LAYER_NUMS = {}
+# Mouse keys (MS_UP, ...) move the pointer this many pixels per tick.
+MOUSE_KEY_SPEED = 4  # 400 px/s at 100 Hz
 
-MOUSE_SCALE = 0.5  # Must be less than 0.5...
 
 
 class KeyboardEvent:
@@ -96,6 +96,8 @@ class InputState:
         self.mouse_y = 0
         self.mouse_enable = 0
         self.mouse_scaler = MouseScaler()  # smoothing and speed
+        self.mouse_key_buttons = 0  # mouse buttons held by mouse keys
+        self.default_layer = 0      # set by DF(n)
         self.mouse = MouseInterface()
         self.keyboard = KeyboardInterface()
         # A fixed pool of events.  Events are marked active rather than moved
@@ -167,7 +169,7 @@ def tick(input_state):
         input_state.mouse_scaler.reset()
 
     # The newest active event that sets a layer wins.
-    current_layer = 0
+    current_layer = input_state.default_layer
     layer_seq = 0
     for event in input_state.events:
         if event.active and event.set_layer is not None and event.seq > layer_seq:
@@ -192,6 +194,7 @@ def tick(input_state):
     if not input_state.ensure_current_event():
         # Every event is in use, so new presses wait until one is released.
         send_keys(input_state, keeb)
+        send_mouse_keys(input_state, mouse)
         return
     current_event = input_state.current_event
 
@@ -222,6 +225,11 @@ def tick(input_state):
 
     # Starting event
     elif buttons and not current_event.buttons:
+        if buttons not in LOOKUP[current_layer]:
+            # Keys pressed together that aren't a chord (or part of one),
+            # like two mouse keys, get an event each, one per tick, lowest
+            # bit first.
+            buttons &= -buttons
         current_event.buttons = buttons
         if DEBUG_PRINT:
             print("Event starting:", current_event.buttons, current_event.modifier, 'Layer:', current_layer)
@@ -260,9 +268,11 @@ def tick(input_state):
         if DEBUG_PRINT:
             print("Tap Action/Mod:", tap_action, tap_modifier)
             print("Hold Action/Mod, in_chord:", hold_action, hold_modifier, in_chord)
-        # Hold, unless there's no hold action, like a chord key held past the
-        # chord wait, which falls back to its tap.
-        if current_event.is_held and hold_action is not None:
+        # Hold if held past the hold time, or if another key was pressed
+        # meanwhile (like QMK's HOLD_ON_OTHER_KEY_PRESS), so LT(1, ...) then
+        # a layer 1 key works.  Without a hold action, like a chord key, it's
+        # a tap.
+        if (current_event.is_held or new_unjoinable) and hold_action is not None:
             action = hold_action
             oneshot = hold_oneshot
             modifier = hold_modifier
@@ -274,18 +284,20 @@ def tick(input_state):
         current_event.oneshot = oneshot
         current_event.modifier = modifier
 
-        # Check if the event is a layer shift:
-        layer = LAYER_NUMS.get(action)
-        if layer is not None:
-            current_event.set_layer = layer
+        kind = action & 0xFF00 if action is not None else 0
+        if kind == MO:
+            current_event.set_layer = action & 0xFF
+        elif kind == DF:
+            input_state.default_layer = action & 0xFF
         else:
-            current_event.action = action
+            current_event.action = action  # key, modifier or mouse key
 
         input_state.queue_current_event()  # move to active list
         if DEBUG_PRINT:
             print("Event queued:", current_event.action)
 
     send_keys(input_state, keeb)
+    send_mouse_keys(input_state, mouse)
 
 
 def send_keys(input_state, keeb):
@@ -294,9 +306,11 @@ def send_keys(input_state, keeb):
     for event in input_state.events:
         if not event.active:
             continue
-        # if event.action in KeyCode:
-        if isinstance(event.action, int):
-            input_state.send_keys[send_keys_num] = event.action
+        # Keycodes are 0..0xFF and modifiers are negative, other actions are
+        # handled elsewhere.
+        action = event.action
+        if action is not None and action < 0x100:
+            input_state.send_keys[send_keys_num] = action
             send_keys_num += 1
         if event.modifier < 0:
             # print("sent modifier:", event.modifier)
@@ -308,6 +322,44 @@ def send_keys(input_state, keeb):
     result = keeb.send_keys(send_keys_view, timeout_ms=100)
     if not result and DEBUG_PRINT:
         print("Failed to send keys:", input_state.send_keys[:send_keys_num])
+
+
+def send_mouse_keys(input_state, mouse):
+    '''Sends mouse buttons and movement from active mouse key events.  This
+    is separate from the analog mouse (stick, gyro) handled at the start of
+    the tick, which goes through smoothing and scaling.'''
+    buttons = 0
+    dx = 0
+    dy = 0
+    for event in input_state.events:
+        if not event.active or event.action is None:
+            continue
+        kind = event.action & 0xFF00
+        arg = event.action & 0xFF
+        if kind == MS_BTN:
+            buttons |= 1 << arg
+        elif kind == MS_MOVE:
+            if arg == 0:
+                dy -= MOUSE_KEY_SPEED
+            elif arg == 1:
+                dy += MOUSE_KEY_SPEED
+            elif arg == 2:
+                dx -= MOUSE_KEY_SPEED
+            else:
+                dx += MOUSE_KEY_SPEED
+
+    # Each click_* sends a report, so only call them when a button changes.
+    changed = buttons ^ input_state.mouse_key_buttons
+    if changed:
+        input_state.mouse_key_buttons = buttons
+        if changed & 1:
+            mouse.click_left(bool(buttons & 1))
+        if changed & 2:
+            mouse.click_right(bool(buttons & 2))
+        if changed & 4:
+            mouse.click_middle(bool(buttons & 4))
+    if dx or dy:
+        mouse.move_by(dx, dy)
 
 
 def main():
@@ -330,13 +382,6 @@ def main():
     INPUTS = new
     print("  * State total keys:", state_num_keys)
 
-    # Map layer actions to layer numbers so the tick doesn't parse strings.
-    for layer_lookup in LOOKUP.values():
-        for entry in layer_lookup.values():
-            for action in (entry[0], entry[1]):
-                if isinstance(action, str) and action.startswith('L'):
-                    LAYER_NUMS[action] = int(action[1:])
-    print("  * Layer actions:", LAYER_NUMS)
 
     # Enable usb mouse
     print("Initializing USB mouse and keyboard...")
