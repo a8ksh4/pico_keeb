@@ -49,6 +49,14 @@ DEBUG_PRINT = True
 # keyboard on the first allocation, and must be off when DEBUG_PRINT is on.
 HEAP_LOCK_TICK = False
 
+# Battery voltage, printed as "BATTERY <millivolts>" for the host's serial
+# logger (host/tallcan_serial_log.py).  Placeholder until it's wired up: set
+# BATTERY_ADC_PIN to an ADC pin (GPIO 28 is free) and BATTERY_DIVIDER to the
+# voltage divider ratio (battery volts / pin volts).
+BATTERY_ADC_PIN = None
+BATTERY_DIVIDER = 2
+BATTERY_INTERVAL = 60_000_000  # 60 seconds
+
 NUM_EVENTS = 9  # max simultaneous events (keys / chords held)
 
 # Returned by lookups for key combinations not in the keymap.  A module level
@@ -362,6 +370,12 @@ def send_mouse_keys(input_state, mouse):
         mouse.move_by(dx, dy)
 
 
+def report_battery(adc):
+    '''Prints the battery voltage for the host's serial logger.'''
+    millivolts = adc.read_u16() * 3300 * BATTERY_DIVIDER // 65535
+    print("BATTERY", millivolts)
+
+
 def main():
     '''Main program loop...'''
     # global INPUT_STATE
@@ -413,10 +427,15 @@ def main():
     # so we either wait for the delay tieout or for any of the keys to be released 
     # to trigger the action.  
 
+    battery_adc = None
+    if BATTERY_ADC_PIN is not None:
+        battery_adc = machine.ADC(machine.Pin(BATTERY_ADC_PIN))
+
     print("Looping forever...")
     gc.collect()
     next_t = ticks_us()
     next_debug_t = next_t
+    next_battery_t = next_t
     # Time left over after each tick, in us.  Integer math, since floats
     # allocate.  A negative min means a tick overran its period.
     slack_avg = 0
@@ -435,6 +454,9 @@ def main():
             print("  * Wheel:", input_state.wheel)
             print()
             mem_info()
+        if battery_adc and ticks_diff(next_battery_t, ticks_us()) <= 0:
+            next_battery_t = ticks_add(ticks_us(), BATTERY_INTERVAL)
+            report_battery(battery_adc)
         if HEAP_LOCK_TICK:
             heap_lock()
             try:

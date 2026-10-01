@@ -1,0 +1,12 @@
+[Unit]
+Description=Log the tallcan keyboard's serial output
+
+[Service]
+ExecStart=%h/.local/bin/tallcan-serial-log
+Restart=always
+RestartSec=5
+# Show print output in the journal right away
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
