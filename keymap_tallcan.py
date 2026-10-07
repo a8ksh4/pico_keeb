@@ -33,6 +33,53 @@ HOLD_TIME_MS = 200  # how long to wait for a hold tap to become a hold
 HOLD_TIME_US = 1000 * HOLD_TIME_MS
 _GAME_LAYER = 5
 
+
+# Keymap entries use QMK names (https://docs.qmk.fm/keycodes_basic) and
+# functions like MO(1), DF(4), LT(1, MS_BTN1) and LSFT(8).  See KEYS.md
+# for supported entries and examples.
+_KEYMAP = (
+    # 0 - Base Layer
+    ('S',   'T',   'R',   'A',      'A',   'R',   'T',   'S',
+     'O',   'I',   'Y',   'E',      'E',   'Y',   'I',   'O',
+          'LCTL', 'LSFT', 'DF(5)',  'MS_BTN2',  'MO(1)', 'MO(2)',
+     # stick touch
+     'MO(4)'),
+    # 1 - Numbers Layer
+    ('4',   '3',   '2',   '1',      '1',   '2',   '3',   '4',
+     '8',   '7',   '6',   '5',      '5',   '6',   '7',   '8',
+             '',    '',    '',       '',    '',    '',
+     # stick touch
+     ''),
+    # 2 - Symbols Layer
+    ('$',   '#',   '@',   '!',      '!',   '@',   '#',   '$',
+     '*',   '&',   '^',   '%',      '%',   '^',   '&',   '*',
+             '',    '',    '',       '',    '',    '',
+     # stick touch
+     ''),
+    # 3 - Symbols Layer 2
+    ('{', '[',   ']',   '}',      '=',   '-',   '`',   '~',
+     '/', '<',   '>',   '\\',      '|',   ';',   '',   '',
+             '',    '',    '',       '',    '',    '',
+     # stick touch
+     ''),
+    # 4 - Navigation Layer
+    ('PGUP', 'HOME',   'UP',   'END',      'MS_BTN1',  'MS_UP',   'MS_BTN2',   'MS_WHLU',
+     'PGDN', 'LEFT', 'DOWN', 'RIGHT',      'MS_LEFT',  'MS_DOWN', 'MS_RGHT',   'MS_WHLD',
+             '',    '',    'DF(5)',             'MS_BTN3',  'MS_BTN1', 'MS_BTN2',
+     # stick touch
+     ''),
+    # 5 - Game Layer has no chords or fancy stuff for fast response
+    ('', '',   'UP',   '',      '',   '',   '',   '',
+     '', 'LEFT','DOWN', 'RIGHT',      '',   '',   '',   '',
+         '',    '',  'DF(0)', '',    '',    '',
+     # stick touch
+     ''),
+)
+
+# You can define aliases for keys here...
+_MY_ALIASES = {}
+
+
 # Chords per layer, in the same order as _KEYMAP.  Each chord is
 # (output, (keys...)), where the output is any keymap entry and the keys are
 # entries from that layer of _KEYMAP, written exactly as they are there.  Keys
@@ -84,6 +131,7 @@ _CHORDS = (
         ('LALT', ('S', 'I')),
         ('LSFT', ('A', 'Y', 'I', 'O')),
         ('DF(4)', ('E', 'R', 'I')),
+        ('MO(3)', ('LSFT', 'LCTL')),  # Symbols 2
     ],
     # 1 - Numbers Layer
     [
@@ -117,51 +165,7 @@ _CHORDS = (
 )
 
 
-_KEYMAP = (
-    # 0 - Base Layer
-    ('S',   'T',   'R',   'A',      'A',   'R',   'T',   'S',
-     'O',   'I',   'Y',   'E',      'E',   'Y',   'I',   'O',
-          'LCTL', 'LSFT', 'DF(5)',  'MS_BTN2',  'MO(1)', 'MO(2)',
-     # stick touch
-     'MO(4)'),
-    # 1 - Numbers Layer
-    ('4',   '3',   '2',   '1',      '1',   '2',   '3',   '4',
-     '8',   '7',   '6',   '5',      '5',   '6',   '7',   '8',
-             '',    '',    '',       '',    '',    '',
-     # stick touch
-     ''),
-    # 2 - Symbols Layer
-    ('$',   '#',   '@',   '!',      '!',   '@',   '#',   '$',
-     '*',   '&',   '^',   '%',      '%',   '^',   '&',   '*',
-             '',    '',    '',       '',    '',    '',
-     # stick touch
-     ''),
-    # 3 - Meta Layer
-    ('', '',   '',   '',      '',   '',   '',   '',
-     '', '',   '',   '',      '',   '',   '',   '',
-             '',    '',    '',       '',    '',    '',
-     # stick touch
-     ''),
-    # 4 - Navigation Layer
-    ('PGUP', 'HOME',   'UP',   'END',      'MS_BTN1',  'MS_UP',   'MS_BTN2',   'MS_WHLU',
-     'PGDN', 'LEFT', 'DOWN', 'RIGHT',      'MS_LEFT',  'MS_DOWN', 'MS_RGHT',   'MS_WHLD',
-             '',    '',    'DF(5)',             'MS_BTN3',  'MS_BTN1', 'MS_BTN2',
-     # stick touch
-     ''),
-    # 5 - Game Layer has no chords or fancy stuff for fast response
-    ('', '',   'UP',   '',      '',   '',   '',   '',
-     '', 'LEFT','DOWN', 'RIGHT',      '',   '',   '',   '',
-         '',    '',  'DF(0)', '',    '',    '',
-     # stick touch
-     ''),
-)
 
-# Keymap entries use QMK names (https://docs.qmk.fm/keycodes_basic) and
-# functions like MO(1), DF(4), LT(1, MS_BTN1) and LSFT(8).  See the top of
-# keymap_utils.py for what's supported, and _ALIASES there for the single
-# character shortcuts.  Add your own names for entries here, e.g.
-# {'NAV': 'DF(4)'}
-_MY_ALIASES = {}
 
 
 ################################

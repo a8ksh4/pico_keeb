@@ -1,7 +1,8 @@
 # pico_keeb
 A small keyboard firmware!  It was originally written in CircuitPython and was
 a buggy monolitic implementatino.  It's currently being rewritten in micropython
-and hopefully made to work reliably with a big feature list...
+and hopefully made to work reliably with a big feature list... even if still
+totally monolithic.  It is really modular in the input modules.
 
 Notes:
 * https://github.com/micropython/micropython-lib/tree/master/micropython/usb
@@ -14,20 +15,24 @@ Notes:
 What Works:
 * All standard keys
 * Customizable pin mapping.
-* Customizable key layouts using key names in adafruit Keycode package. https://github.com/adafruit/Adafruit_CircuitPython_HID/blob/main/adafruit_hid/keycode.py
 * Layers
 * Dual function hold/tap keys
-* Direct key to pin wiring (no matrix scanning yet)
+* Chording
 * Mouse emulation
+* Analog joystick mouse and accelerometer fine mouse movement.
+* Encoder wheels
+* WIP allignment with QMK key names.
+* Only memory churn when debug mode is off is print statements driving battery reporting to serial.
 
 What Needs to be done and features want-list:
-* Remove requirement for 'tap' key to be defined for layer keys.  Right now all layer keys are dual function.
+* Input stick pio module needs tuning changed away from rolling avg to static value as mouse jenks out if you hover over it for a few seconds and mis-caliwrate it.
+* Nice things for making this easy for other people to use.
+* Artsio keymap example.
+* Fix mouse wheel behavior for encoder wheel.
+* Gamepad emulation and 'game mode' layer enabled with chording disabled for minimum latency.
 * Add keymap validation at startup.  Make sure all given keycodes are valid and all given layers exist in keymap.
-* Add pin scanning for matrix wiring.
-* Add OLED output for general status messages, etc.
 * Also intending to add T9 style predictive typing support. Curious if a fully functional ~15% keyboard can be practical for linux command line and programming operation.
-* Unit testing for code
-* Sensor based behavior
+
 ** Voltage Checking -> pin high/low or i2c reporting
 ** Hall sensor read -> pin high/low
 
