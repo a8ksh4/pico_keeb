@@ -37,13 +37,12 @@ What Needs to be done and features want-list:
 ** Hall sensor read -> pin high/low
 
 ## How To Use
-Check out the repo to your pi pico.
-Copy the layout_simple.py and modify it to suit your needs.  The example is a 4x4 pad some weird stuff.  
+Flash micropython to your board,
+Run the mpremote commands to add the needed libraries to the board.
+Copy and modify an existing keymap file for your board.
 
-Change the 'import layout_simple as layout' line at the top of code.py to correspond with the name of your layout file.
+Change the 'import _ as KEYMAP' line at the top of main.py to correspond with the name of your keymap file.
 Open bug reports and feature requests, or pull requests if you add features or fix stuff.
-
-I was looking for a project to work on for experiende with Circuit Pytnon and the Pi Pico.  This one gets bonus points because it's an opportunity to explore machine learning!
 
 
 ## Test Hardware

@@ -67,7 +67,6 @@ _NO_ACTION = (None, None, None, None, None, 0, 0)
 MOUSE_KEY_SPEED = 4  # 400 px/s at 100 Hz
 
 
-
 class KeyboardEvent:
     '''We pre-allocate a few of these at start and use them to associate
     key presses with actions.  We  call cleanup when the event is done.'''
