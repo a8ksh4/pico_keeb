@@ -22,7 +22,7 @@ from keymap_utils import MO, DF, MS_BTN, MS_MOVE
 # import pyb
 # pyb.usb_mode("VCP+HID", hid=pyb.hid_keyboard)
 import usb.device
-from usb.device.mouse import MouseInterface
+from usb_mouse import MouseInterface
 from usb.device.keyboard import KeyboardInterface, KeyCode, LEDCode
 
 from time import sleep, ticks_us, ticks_add, ticks_diff
@@ -65,6 +65,8 @@ _NO_ACTION = (None, None, None, None, None, 0, 0)
 
 # Mouse keys (MS_UP, ...) move the pointer this many pixels per tick.
 MOUSE_KEY_SPEED = 4  # 400 px/s at 100 Hz
+# Flip the scroll direction of the encoder wheel.
+WHEEL_INVERT = False
 
 
 class KeyboardEvent:
@@ -103,7 +105,7 @@ class InputState:
         self.mouse_y = 0
         self.mouse_enable = 0
         self.mouse_scaler = MouseScaler()  # smoothing and speed
-        self.mouse_key_buttons = 0  # mouse buttons held by mouse keys
+        self.mouse_buttons = 0      # mouse buttons in the last report
         self.default_layer = 0      # set by DF(n)
         self.mouse = MouseInterface()
         self.keyboard = KeyboardInterface()
@@ -165,15 +167,15 @@ def tick(input_state):
     for im in INPUTS:
         im.update_state()
 
-    # Handle mouse movement:
+    # Smooth and scale the analog mouse movement.  It's sent with the mouse
+    # keys at the end of the tick.
     # print("Mouse enabled:", input_state.mouse_enable)
     if input_state.mouse_enable:
         input_state.mouse_scaler.scale(input_state)
-        # Small movements can scale to 0 until the remainders add up.
-        if input_state.mouse_x or input_state.mouse_y:
-            mouse.move_by(input_state.mouse_x, input_state.mouse_y)
     else:
         input_state.mouse_scaler.reset()
+        input_state.mouse_x = 0
+        input_state.mouse_y = 0
 
     # The newest active event that sets a layer wins.
     current_layer = input_state.default_layer
@@ -201,7 +203,7 @@ def tick(input_state):
     if not input_state.ensure_current_event():
         # Every event is in use, so new presses wait until one is released.
         send_keys(input_state, keeb)
-        send_mouse_keys(input_state, mouse)
+        send_mouse(input_state, mouse)
         return
     current_event = input_state.current_event
 
@@ -304,7 +306,7 @@ def tick(input_state):
             print("Event queued:", current_event.action)
 
     send_keys(input_state, keeb)
-    send_mouse_keys(input_state, mouse)
+    send_mouse(input_state, mouse)
 
 
 def send_keys(input_state, keeb):
@@ -331,13 +333,23 @@ def send_keys(input_state, keeb):
         print("Failed to send keys:", input_state.send_keys[:send_keys_num])
 
 
-def send_mouse_keys(input_state, mouse):
-    '''Sends mouse buttons and movement from active mouse key events.  This
-    is separate from the analog mouse (stick, gyro) handled at the start of
-    the tick, which goes through smoothing and scaling.'''
+def _clamp127(v):
+    '''Clamps v to the -127..127 a mouse report allows.'''
+    if v < -127:
+        return -127
+    if v > 127:
+        return 127
+    return v
+
+
+def send_mouse(input_state, mouse):
+    '''Sends one mouse report with the analog movement (stick, gyro, already
+    scaled at the start of the tick), the wheel, and the buttons and movement
+    of active mouse key events.  Nothing is sent if nothing changed.'''
     buttons = 0
-    dx = 0
-    dy = 0
+    dx = input_state.mouse_x
+    dy = input_state.mouse_y
+    wheel = -input_state.wheel if WHEEL_INVERT else input_state.wheel
     for event in input_state.events:
         if not event.active or event.action is None:
             continue
@@ -355,18 +367,13 @@ def send_mouse_keys(input_state, mouse):
             else:
                 dx += MOUSE_KEY_SPEED
 
-    # Each click_* sends a report, so only call them when a button changes.
-    changed = buttons ^ input_state.mouse_key_buttons
-    if changed:
-        input_state.mouse_key_buttons = buttons
-        if changed & 1:
-            mouse.click_left(bool(buttons & 1))
-        if changed & 2:
-            mouse.click_right(bool(buttons & 2))
-        if changed & 4:
-            mouse.click_middle(bool(buttons & 4))
-    if dx or dy:
-        mouse.move_by(dx, dy)
+    if buttons != input_state.mouse_buttons or dx or dy or wheel:
+        # Only remember the buttons once sent, so a failed send is retried.
+        if mouse.send_report(buttons, _clamp127(dx), _clamp127(dy),
+                             _clamp127(wheel)):
+            input_state.mouse_buttons = buttons
+        elif DEBUG_PRINT:
+            print("Failed to send mouse report")
 
 
 def report_battery(adc):

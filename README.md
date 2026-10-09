@@ -7,7 +7,6 @@ totally monolithic.  It is really modular in the input modules.
 Notes:
 * https://github.com/micropython/micropython-lib/tree/master/micropython/usb
 * mpremote.py connect /dev/ttyACM0 mip install usb-device-keyboard
-* mpremote.py connect /dev/ttyACM0 mip install usb-device-mouse
 * mpremote.py connect /dev/ttyACM0 mip install usb-device-hid
 * mpremote.py connect /dev/ttyACM0 mip install usb-device-cdc
 

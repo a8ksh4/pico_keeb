@@ -8,7 +8,7 @@ if systemctl --user is-active --quiet tallcan-serial 2>/dev/null; then
 	systemctl --user stop tallcan-serial
 fi
 
-for F in input*.py keymap_*.py main.py; do
+for F in input*.py keymap_*.py usb_mouse.py main.py; do
 	pyboard.py -f cp $F :
 done
 
